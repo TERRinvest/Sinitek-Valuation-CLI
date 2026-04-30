@@ -161,8 +161,8 @@ defaults:
 | `history_year` | 更新模型时的历史年数。CLI 会同步写入“目录”页 `D3`。作为默认值，仅在命令行未传 `-HistoryYear` 时生效。 |
 | `forecast_year` | 更新模型时的预测年数。CLI 会同步写入“目录”页 `D4` 并由模型公式更新 `D7`。作为默认值，仅在命令行未传 `-ForecastYear` 时生效。 |
 | `currency_unit` | 货币单位倍率。CLI 会同步写入“目录”页的单位单元格，使报表显示和公式缩放生效。当前示例默认 `0.000001`，即百万元。 |
-| `update_directory` | `update-direct` 是否更新目录。 |
-| `update_src_data` | `update-direct` 是否更新财务源数据、附注、经营数据、可比分析等。 |
+| `update_directory` | `update` 是否更新目录。 |
+| `update_src_data` | `update` 是否更新财务源数据、附注、经营数据、可比分析等。 |
 | `migrate` | 是否执行历史数据迁移。 |
 | `add_output` | 更新完成后是否顺带生成 output sheet。 |
 | `company_management_type` | 公司经营数据口径，当前默认 `"2"`。 |
@@ -214,19 +214,19 @@ YAML 解析器只支持当前这种简单结构：顶层字段和一层嵌套字
 直接更新模型并保存副本：
 
 ```powershell
-.\sinitek.cmd -Action update-direct -Stock 600519 -OutWorkbook .\output\maotai-updated.xlsx
+.\sinitek.cmd -Action update -Stock 600519 -OutWorkbook .\output\maotai-updated.xlsx
 ```
 
 需要临时切换报表单位时，可以直接传 `-CurrencyUnit`：
 
 ```powershell
-.\sinitek.cmd -Action update-direct -Stock 600519 -CurrencyUnit 0.0001
+.\sinitek.cmd -Action update -Stock 600519 -CurrencyUnit 0.0001
 ```
 
 可比公司默认按原插件逻辑处理：如果当前 workbook 已经是同一主公司，继续复用模型现有 `PeerStock`；切换主公司时，用主公司的 `Gsdm` 请求携宁云 `/api/company/analysis/gsdms`，把返回的推荐可比公司 `gsdm` 写入 `PeerStock`。需要手工指定时传逗号分隔的 GSDM：
 
 ```powershell
-.\sinitek.cmd -Action update-direct -Stock 600519 -PeerStock "000858.SZ,000568.SZ,600809.SH"
+.\sinitek.cmd -Action update -Stock 600519 -PeerStock "000858.SZ,000568.SZ,600809.SH"
 ```
 
 一键输出最终产物（登录、更新数据、生成 output sheet、保存副本）：
@@ -249,7 +249,7 @@ CLI 默认有 300 秒总超时，覆盖整个 PowerShell、Excel COM 和插件�
 日常推荐在 `sinitek.yaml` 中配置 `output_dir`，然后让 CLI 自动生成输出文件名，避免覆盖历史结果：
 
 ```powershell
-.\sinitek.cmd -Action update-direct -Stock 600519
+.\sinitek.cmd -Action update -Stock 600519
 ```
 
 只有需要固定文件名时，再显式传 `-OutWorkbook`。
@@ -257,7 +257,7 @@ CLI 默认有 300 秒总超时，覆盖整个 PowerShell、Excel COM 和插件�
 强制保存回原模板：
 
 ```powershell
-.\sinitek.cmd -Action update-direct -Stock 600519 -Save
+.\sinitek.cmd -Action update -Stock 600519 -Save
 ```
 
 谨慎使用 `-Save`，它会写回原 workbook。
@@ -279,13 +279,13 @@ CLI 默认有 300 秒总超时，覆盖整个 PowerShell、Excel COM 和插件�
 以下 action 会修改 workbook 状态：
 
 - `output`
-- `update-direct`
+- `update`
 - `produce`
 
 这些 action 必须满足以下条件之一：
 
 - 传 `-OutWorkbook <path>` 保存到指定文件。
-- 配置或传入 `-OutputDir <dir>` 自动生成带时间戳的输出文件。
+- 配置或传入 `-OutputDir <dir>` 自动生成输出文件，命名格式为 `<原始Workbook文件名>-<Action>-<Stock>-<yyyyMMdd-HHmmss>.xlsx`，其中 `Action` 统一首字母大写，`Stock` 为纯数字股票代码。
 - 传 `-Save` 写回原文件。
 
 如果都没有提供，CLI 会拒绝执行，避免无意修改原模板。
@@ -356,7 +356,7 @@ bash -> powershell.exe -> Excel COM -> 携宁云估值插件
 如果主要在 Windows PowerShell 中使用，推荐直接用：
 
 ```powershell
-.\sinitek.cmd -Action update-direct -Stock 600519
+.\sinitek.cmd -Action update -Stock 600519
 ```
 
 ## 实现说明

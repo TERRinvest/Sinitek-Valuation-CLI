@@ -30,16 +30,16 @@ defaults:
   # 映射关系：元=1，千元=0.001，万元=0.0001，百万元=0.000001，亿元=0.00000001。
   currency_unit: "0.000001"
 
-  # update-direct/produce 是否更新目录页。
+  # update/produce 是否更新目录页。
   update_directory: true
 
-  # update-direct/produce 是否更新财务源数据、附注、经营数据和可比分析。
+  # update/produce 是否更新财务源数据、附注、经营数据和可比分析。
   update_src_data: true
 
   # 最新年报年份变化时，是否迁移历史预测数据。
   migrate: false
 
-  # update-direct 是否顺带生成 output sheet；produce 会忽略此项并始终生成 output sheet。
+  # update 是否顺带生成 output sheet；produce 会忽略此项并始终生成 output sheet。
   add_output: false
 
   # 公司经营数据口径：传给插件 CompanyManagementType，用于更新“公司经营数据”表。

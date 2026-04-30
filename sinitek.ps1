@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('inspect', 'login', 'output', 'update-direct', 'produce')]
+    [ValidateSet('inspect', 'login', 'output', 'update', 'produce')]
     [string]$Action = 'inspect',
 
     [string]$Config = '.\sinitek.yaml',
@@ -100,6 +100,91 @@ function Resolve-OptionalPath {
         return [IO.Path]::GetFullPath($Path)
     }
     return [IO.Path]::GetFullPath((Join-Path $BasePath $Path))
+}
+
+function Format-ActionForFileName {
+    param([string]$ActionName)
+    if ([string]::IsNullOrWhiteSpace($ActionName)) {
+        return 'Action'
+    }
+    $LowerAction = $ActionName.Trim().ToLowerInvariant()
+    return [Globalization.CultureInfo]::InvariantCulture.TextInfo.ToTitleCase($LowerAction)
+}
+
+function Normalize-StockCodeForFileName {
+    param([string]$StockCode)
+    if ([string]::IsNullOrWhiteSpace($StockCode)) {
+        return ''
+    }
+    $Match = [regex]::Match($StockCode.Trim(), '\d+')
+    if ($Match.Success) {
+        return $Match.Value
+    }
+    return ''
+}
+
+function Get-XlsxCustomProperty {
+    param(
+        [string]$Path,
+        [string]$Name
+    )
+    if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path -LiteralPath $Path)) {
+        return ''
+    }
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyContinue
+    $Zip = $null
+    $Reader = $null
+    try {
+        $Zip = [IO.Compression.ZipFile]::OpenRead($Path)
+        $Entry = $Zip.GetEntry('docProps/custom.xml')
+        if (-not $Entry) {
+            return ''
+        }
+
+        $Reader = [IO.StreamReader]::new($Entry.Open(), [Text.Encoding]::UTF8)
+        [xml]$Xml = $Reader.ReadToEnd()
+        $NamespaceManager = New-Object Xml.XmlNamespaceManager($Xml.NameTable)
+        $NamespaceManager.AddNamespace('cp', 'http://schemas.openxmlformats.org/officeDocument/2006/custom-properties')
+        $Node = $Xml.SelectSingleNode("//cp:property[@name='$Name']", $NamespaceManager)
+        if ($Node -and $Node.FirstChild) {
+            return [string]$Node.FirstChild.InnerText
+        }
+    }
+    catch {
+        return ''
+    }
+    finally {
+        if ($Reader) {
+            $Reader.Dispose()
+        }
+        if ($Zip) {
+            $Zip.Dispose()
+        }
+    }
+    return ''
+}
+
+function Get-StockCodeForFileName {
+    param(
+        [string]$StockCode,
+        [string]$WorkbookPath
+    )
+
+    $NormalizedStock = Normalize-StockCodeForFileName $StockCode
+    if (-not [string]::IsNullOrWhiteSpace($NormalizedStock)) {
+        return $NormalizedStock
+    }
+
+    foreach ($PropertyName in @('StkCode', 'index_stkcode', 'base_stkcode', 'GSCode')) {
+        $PropertyValue = Get-XlsxCustomProperty -Path $WorkbookPath -Name $PropertyName
+        $NormalizedStock = Normalize-StockCodeForFileName $PropertyValue
+        if (-not [string]::IsNullOrWhiteSpace($NormalizedStock)) {
+            return $NormalizedStock
+        }
+    }
+
+    throw "Cannot determine stock code for output filename. Pass -Stock or -OutWorkbook."
 }
 
 function ConvertFrom-SimpleYamlValue {
@@ -577,14 +662,16 @@ Add-Type -Path $BridgePath -ReferencedAssemblies $References
 
 $WorkbookPath = if ($Workbook) { (Resolve-Path -LiteralPath $Workbook).Path } else { '' }
 
-$MutatingActions = @('output', 'update-direct', 'produce')
+$MutatingActions = @('output', 'update', 'produce')
 if ($MutatingActions -contains $Action) {
     if (-not $Save.IsPresent -and [string]::IsNullOrWhiteSpace($OutWorkbook) -and -not [string]::IsNullOrWhiteSpace($OutputDir)) {
         $OutputBasePath = if (Test-ExplicitParam 'OutputDir') { (Get-Location).Path } else { $ConfigBase }
         $OutputBase = Resolve-OptionalPath -Path $OutputDir -BasePath $OutputBasePath
         $WorkbookName = if ($WorkbookPath) { [IO.Path]::GetFileNameWithoutExtension($WorkbookPath) } else { 'workbook' }
+        $ActionName = Format-ActionForFileName $Action
+        $StockSegment = Get-StockCodeForFileName -StockCode $Stock -WorkbookPath $WorkbookPath
         $Timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-        $OutWorkbook = Join-Path $OutputBase "$WorkbookName-$Action-$Timestamp.xlsx"
+        $OutWorkbook = Join-Path $OutputBase "$WorkbookName-$ActionName-$StockSegment-$Timestamp.xlsx"
     }
     if (-not $Save.IsPresent -and [string]::IsNullOrWhiteSpace($OutWorkbook)) {
         throw "Mutating action '$Action' requires -OutWorkbook, -OutputDir, or -Save."
@@ -611,7 +698,7 @@ try {
                 $Password
             )
         }
-        'update-direct' {
+        'update' {
             [SinitekCliBridge]::UpdateDirect(
                 $WorkbookPath,
                 $OutWorkbook,

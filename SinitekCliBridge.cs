@@ -273,7 +273,7 @@ public static class SinitekCliBridge
             SaveIfRequested(session.Workbook, outWorkbook, saveOriginal);
 
             var lines = new List<string>();
-            lines.Add("UpdateDirect=" + (failures.Count == 0));
+            lines.Add("Update=" + (failures.Count == 0));
             lines.Add("Handler=" + handlerType);
             lines.Add("Stock=" + stock.StockCode);
             lines.Add("GSCode=" + stock.Gsdm);
