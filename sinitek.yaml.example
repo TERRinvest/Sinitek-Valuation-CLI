@@ -1,0 +1,51 @@
+# Copy this file to sinitek.yaml and adjust local default values.
+# Keep credentials in environment variables, not in this file.
+
+# CLI 默认打开的估值模型文件。
+workbook: ./Sinitek_Model_Ashare_V12.xlsx
+
+# 未传 -OutWorkbook 时，自动生成产物文件的输出目录。
+output_dir: ./output
+
+# 登录凭据配置；这里只写环境变量名，不直接保存账号密码。
+auth:
+  # 保存携宁云用户名或邮箱的环境变量名。
+  username_env: SINITEK_USERNAME
+
+  # 保存携宁云密码的环境变量名。
+  password_env: SINITEK_PASSWORD
+
+# CLI 参数默认值；命令行显式传参会覆盖这些配置。
+defaults:
+  # 历史数据年数：对应插件更新窗口的“历史数据年数”。
+  # CLI 会同步写入“目录”页 D3 和 HistoryYear 自定义属性，影响更新时提取的历史年度数据范围。
+  history_year: 4
+
+  # 预测数据年数：对应插件更新窗口的“预测数据年数”。
+  # CLI 会同步写入“目录”页 D4 和 ForecastYear 自定义属性；“目录”页 D7 会通过公式 IF(D4>10,10,D4) 自动更新。
+  forecast_year: 3
+
+  # 报表货币显示单位倍率；CLI 会同步写入“目录”页 D5/D6，从而影响报表单位。
+  # 当前默认是百万元。
+  # 映射关系：元=1，千元=0.001，万元=0.0001，百万元=0.000001，亿元=0.00000001。
+  currency_unit: "0.000001"
+
+  # update-direct/produce 是否更新目录页。
+  update_directory: true
+
+  # update-direct/produce 是否更新财务源数据、附注、经营数据和可比分析。
+  update_src_data: true
+
+  # 最新年报年份变化时，是否迁移历史预测数据。
+  migrate: false
+
+  # update-direct 是否顺带生成 output sheet；produce 会忽略此项并始终生成 output sheet。
+  add_output: false
+
+  # 公司经营数据口径：传给插件 CompanyManagementType，用于更新“公司经营数据”表。
+  # 映射关系：1=按行业，2=按产品，3=按地区。当前默认 "2" 即按产品。
+  company_management_type: "2"
+
+  # 股票搜索返回数量：作为 stock-search 的默认 -Count，传给 /api/stock 的 count 参数。
+  # 只影响 stock-search 输出多少条候选股票；小于等于 0 时程序会回退为 10。
+  count: 10

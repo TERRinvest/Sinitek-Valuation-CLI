@@ -1,0 +1,52 @@
+# Runtime output
+output/
+*.log
+*.tmp
+*.temp
+
+# Local environment and machine-specific config
+.env
+.env.*
+sinitek.local.yaml
+sinitek.*.local.yaml
+
+# Excel lock and recovery files
+~$*.xls
+~$*.xlsx
+~$*.xlsm
+*.xlk
+
+# .NET / Visual Studio build artifacts
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+[Bb]uild/
+TestResults/
+.vs/
+*.user
+*.rsuser
+*.suo
+*.userosscache
+*.sln.docstates
+*.pdb
+*.ilk
+*.nupkg
+packages/
+
+# PowerShell transcripts and generated command artifacts
+PowerShell_transcript*.txt
+*.ps1xml
+
+# Editor and OS metadata
+.vscode/
+.idea/
+*.swp
+*.swo
+*.bak
+*.orig
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/

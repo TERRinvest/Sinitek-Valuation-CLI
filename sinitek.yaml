@@ -1,0 +1,17 @@
+workbook: ./Sinitek_Model_Ashare_V12.xlsx
+output_dir: ./output
+
+auth:
+  username_env: SINITEK_USERNAME
+  password_env: SINITEK_PASSWORD
+
+defaults:
+  history_year: 4
+  forecast_year: 3
+  currency_unit: "0.000001"
+  update_directory: true
+  update_src_data: true
+  migrate: false
+  add_output: false
+  company_management_type: "2"
+  count: 10
