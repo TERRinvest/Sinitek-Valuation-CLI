@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('inspect', 'login', 'stock-search', 'button', 'handler', 'output', 'update-direct', 'produce')]
+    [ValidateSet('inspect', 'login', 'stock-search', 'output', 'update-direct', 'produce')]
     [string]$Action = 'inspect',
 
     [string]$Config = '.\sinitek.yaml',
@@ -8,9 +8,6 @@ param(
     [string]$OutputDir = '',
     [switch]$Save,
     [switch]$Visible,
-
-    [string]$ButtonId = '',
-    [string]$HandlerType = '',
 
     [string]$Username = $env:SINITEK_USERNAME,
     [string]$Password = $env:SINITEK_PASSWORD,
@@ -322,7 +319,7 @@ Add-Type -Path $BridgePath -ReferencedAssemblies $References
 
 $WorkbookPath = if ($Workbook) { (Resolve-Path -LiteralPath $Workbook).Path } else { '' }
 
-$MutatingActions = @('button', 'handler', 'output', 'update-direct', 'produce')
+$MutatingActions = @('output', 'update-direct', 'produce')
 if ($MutatingActions -contains $Action) {
     if (-not $Save.IsPresent -and [string]::IsNullOrWhiteSpace($OutWorkbook) -and -not [string]::IsNullOrWhiteSpace($OutputDir)) {
         $OutputBasePath = if (Test-ExplicitParam 'OutputDir') { (Get-Location).Path } else { $ConfigBase }
@@ -346,28 +343,6 @@ try {
         }
         'stock-search' {
             [SinitekCliBridge]::StockSearch($WorkbookPath, $Stock, $Count, $Username, $Password)
-        }
-        'button' {
-            [SinitekCliBridge]::InvokeButton(
-                $WorkbookPath,
-                $OutWorkbook,
-                $Save.IsPresent,
-                $Visible.IsPresent,
-                $ButtonId,
-                $Username,
-                $Password
-            )
-        }
-        'handler' {
-            [SinitekCliBridge]::InvokeHandler(
-                $WorkbookPath,
-                $OutWorkbook,
-                $Save.IsPresent,
-                $Visible.IsPresent,
-                $HandlerType,
-                $Username,
-                $Password
-            )
         }
         'output' {
             [SinitekCliBridge]::OutputDirect(

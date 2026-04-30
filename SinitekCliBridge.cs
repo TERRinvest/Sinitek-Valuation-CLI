@@ -15,20 +15,6 @@ using Microsoft.Office.Core;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-public sealed class FakeRibbonControl : IRibbonControl
-{
-    private readonly string id;
-
-    public FakeRibbonControl(string id)
-    {
-        this.id = id;
-    }
-
-    public string Id { get { return id; } }
-    public object Context { get { return null; } }
-    public string Tag { get { return null; } }
-}
-
 public static class SinitekCliBridge
 {
     private const string AddinDir = @"C:\Sinitek\SinitekExcelAddin";
@@ -140,54 +126,6 @@ public static class SinitekCliBridge
         }
 
         return string.Join(Environment.NewLine, lines);
-    }
-
-    public static string InvokeButton(
-        string workbookPath,
-        string outWorkbook,
-        bool saveOriginal,
-        bool visible,
-        string buttonId,
-        string username,
-        string password)
-    {
-        if (string.IsNullOrWhiteSpace(buttonId))
-        {
-            throw new ArgumentException("Button id is required.");
-        }
-
-        using (var session = new ExcelSession(workbookPath, visible, false))
-        {
-            LoginIfProvided(username, password);
-            var connect = new SinitekExcel.Connect();
-            connect.btnOnAction(new FakeRibbonControl(buttonId));
-            SaveIfRequested(session.Workbook, outWorkbook, saveOriginal);
-            return "ButtonInvoked=" + buttonId;
-        }
-    }
-
-    public static string InvokeHandler(
-        string workbookPath,
-        string outWorkbook,
-        bool saveOriginal,
-        bool visible,
-        string handlerType,
-        string username,
-        string password)
-    {
-        if (string.IsNullOrWhiteSpace(handlerType))
-        {
-            throw new ArgumentException("Handler type is required.");
-        }
-
-        using (var session = new ExcelSession(workbookPath, visible, false))
-        {
-            LoginIfProvided(username, password);
-            var handler = CreateHandler(handlerType);
-            handler.handle();
-            SaveIfRequested(session.Workbook, outWorkbook, saveOriginal);
-            return "HandlerInvoked=" + handlerType;
-        }
     }
 
     public static string OutputDirect(
@@ -519,61 +457,22 @@ public static class SinitekCliBridge
         string url = (SinitekExcel.WriterUtil.ModelUtil.ModelUrl ?? string.Empty).TrimEnd('/') + "/api/stock";
         string postBody = BuildStockSearchPostBody(url, query.Trim(), count <= 0 ? 10 : count, modelVersion, modelType);
 
-        try
+        string json = PostForm(url, postBody, "Stock search");
+        bool foundStockArray;
+        string serverMessage;
+        var stocks = ParseStockSearchJson(json, out foundStockArray, out serverMessage);
+        if (!foundStockArray)
         {
-            ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
-
-            var request = (HttpWebRequest)WebRequest.Create(url);
-            request.Method = "POST";
-            request.ContentType = "application/x-www-form-urlencoded";
-            request.Accept = "application/json,text/plain,*/*";
-            request.Timeout = StockSearchTimeoutMs;
-            request.ReadWriteTimeout = StockSearchTimeoutMs;
-
-            byte[] bodyBytes = Encoding.UTF8.GetBytes(postBody);
-            request.ContentLength = bodyBytes.Length;
-            using (Stream stream = request.GetRequestStream())
+            string message = "Stock search response did not contain a stock list.";
+            if (!string.IsNullOrWhiteSpace(serverMessage))
             {
-                stream.Write(bodyBytes, 0, bodyBytes.Length);
+                message += " Server message: " + serverMessage;
             }
-
-            using (var response = (HttpWebResponse)request.GetResponse())
-            using (var reader = new StreamReader(response.GetResponseStream(), Encoding.UTF8))
-            {
-                string json = reader.ReadToEnd();
-                bool foundStockArray;
-                string serverMessage;
-                var stocks = ParseStockSearchJson(json, out foundStockArray, out serverMessage);
-                if (!foundStockArray)
-                {
-                    string message = "Stock search response did not contain a stock list.";
-                    if (!string.IsNullOrWhiteSpace(serverMessage))
-                    {
-                        message += " Server message: " + serverMessage;
-                    }
-                    message += " Raw response: " + Abbreviate(json, 500);
-                    throw new InvalidOperationException(message);
-                }
-
-                return stocks;
-            }
+            message += " Raw response: " + Abbreviate(json, 500);
+            throw new InvalidOperationException(message);
         }
-        catch (WebException ex)
-        {
-            if (ex.Status == WebExceptionStatus.Timeout)
-            {
-                throw new TimeoutException("Stock search timed out after "
-                    + (StockSearchTimeoutMs / 1000).ToString(CultureInfo.InvariantCulture)
-                    + " seconds: " + url, ex);
-            }
 
-            string detail = ReadWebExceptionBody(ex);
-            if (!string.IsNullOrWhiteSpace(detail))
-            {
-                detail = " Response: " + detail;
-            }
-            throw new InvalidOperationException("Stock search request failed: " + ex.Message + detail, ex);
-        }
+        return stocks;
     }
 
     private static string BuildStockSearchPostBody(string url, string query, int count, string modelVersion, string modelType)
@@ -1038,18 +937,6 @@ public static class SinitekCliBridge
         SinitekExcel.WriterBLL.WriterIPConfigBLL.Instance.getIPInfomation(ref list);
     }
 
-    private static SinitekExcel.IWriterInterface.IHandler CreateHandler(string handlerType)
-    {
-        object instance = Activator.CreateInstance(ResolveType(handlerType));
-        var handler = instance as SinitekExcel.IWriterInterface.IHandler;
-        if (handler == null)
-        {
-            throw new InvalidOperationException(handlerType + " is not an IHandler.");
-        }
-
-        return handler;
-    }
-
     private static Type ResolveType(string typeName)
     {
         Type type = Type.GetType(typeName + ", SinitekExcel")
@@ -1081,17 +968,6 @@ public static class SinitekCliBridge
             throw new InvalidOperationException("Invocation failed: "
                 + target.GetType().FullName + "." + name + ": " + inner.Message, inner);
         }
-    }
-
-    private static object GetStaticProperty(Type type, string name)
-    {
-        PropertyInfo property = type.GetProperty(name, BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-        if (property == null)
-        {
-            throw new MissingMemberException(type.FullName, name);
-        }
-
-        return property.GetValue(null, null);
     }
 
     private static string GetDocProperty(string name)
@@ -1590,12 +1466,6 @@ public static class SinitekCliBridge
     {
         int parsed;
         return int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out parsed) ? parsed : fallback;
-    }
-
-    private static double SafeDouble(string value, double fallback)
-    {
-        double parsed;
-        return double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out parsed) ? parsed : fallback;
     }
 
     private static string Safe(Func<string> getter)

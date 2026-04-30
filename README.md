@@ -266,13 +266,6 @@ StockCode    StockName    Gsdm    MarketCode    MarketName    SecurityCode    In
 
 谨慎使用 `-Save`，它会写回原 workbook。
 
-调用插件按钮或 handler：
-
-```powershell
-.\sinitek.cmd -Action button -ButtonId btnUpdate -OutWorkbook .\output\button.xlsx
-.\sinitek.cmd -Action handler -HandlerType SinitekExcel.WriterBLL.ASBLL.V12.Form.UpdateFrom -OutWorkbook .\output\handler.xlsx
-```
-
 ## 参数覆盖规则
 
 - 命令行参数优先级高于 `sinitek.yaml`。
@@ -287,8 +280,6 @@ StockCode    StockName    Gsdm    MarketCode    MarketName    SecurityCode    In
 
 以下 action 会修改 workbook 状态：
 
-- `button`
-- `handler`
 - `output`
 - `update-direct`
 - `produce`
