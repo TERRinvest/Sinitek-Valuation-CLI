@@ -91,43 +91,6 @@ public static class SinitekCliBridge
         return string.Join(Environment.NewLine, lines);
     }
 
-    public static string StockSearch(string workbookPath, string query, int count, string username, string password)
-    {
-        using (var session = new ExcelSession(workbookPath, false, true))
-        {
-            LoginIfProvided(username, password);
-            EnsureTokenForStockSearch();
-
-            var stocks = SearchStocks(query, count, ResolveCurrentModelVersion(), ResolveCurrentModelType());
-            return FormatStockSearchResult(stocks);
-        }
-    }
-
-    private static string FormatStockSearchResult(List<Sinitek.WriterModel.StockData> stocks)
-    {
-        if (stocks.Count == 0)
-        {
-            return "No stocks returned.";
-        }
-
-        var lines = new List<string>();
-        foreach (var stock in stocks)
-        {
-            lines.Add(string.Join("\t", new[]
-            {
-                NullToEmpty(stock.StockCode),
-                NullToEmpty(stock.StockName),
-                NullToEmpty(stock.Gsdm),
-                NullToEmpty(stock.MarketCode),
-                NullToEmpty(stock.MarketName),
-                NullToEmpty(stock.SecurityCode),
-                NullToEmpty(stock.IndustryCode)
-            }));
-        }
-
-        return string.Join(Environment.NewLine, lines);
-    }
-
     public static string OutputDirect(
         string workbookPath,
         string outWorkbook,
@@ -194,6 +157,8 @@ public static class SinitekCliBridge
             EnsureLoggedIn();
 
             var stock = ResolveStock(stockCode, gsdm, stockName);
+            string previousGsdm = GetDocProperty("GSCode");
+            PeerStockSelection peerSelection = ResolvePeerStockSelection(stock, peerStock, previousGsdm);
             string handlerType = ResolveHandlerType("btnUpdate");
             object handler = Activator.CreateInstance(ResolveType(handlerType));
 
@@ -213,7 +178,7 @@ public static class SinitekCliBridge
             SetDocProperty("CurrencyUnit", currency.ScaleText);
             SetDocProperty("CompanyManagementName", string.IsNullOrWhiteSpace(companyManagementName) ? "\u6309\u4ea7\u54c1" : companyManagementName);
             SetDocProperty("CompanyManagementType", companyManagementType);
-            SetDocProperty("PeerStock", peerStock ?? string.Empty);
+            SetDocProperty("PeerStock", peerSelection.Gsdms);
             SetDocProperty("UpdateDirectory", updateDirectory.ToString(CultureInfo.InvariantCulture));
             SetDocProperty("UpdateSrcData", updateSrcData.ToString(CultureInfo.InvariantCulture));
 
@@ -318,6 +283,9 @@ public static class SinitekCliBridge
             lines.Add("ForecastYear=" + forecastYear.ToString(CultureInfo.InvariantCulture));
             lines.Add("CurrencyUnit=" + currency.CurrencyUnitName);
             lines.Add("CurrencyUnitScale=" + currency.ScaleText);
+            lines.Add("PeerStock=" + peerSelection.Gsdms);
+            lines.Add("PeerStockSource=" + peerSelection.Source);
+            lines.Add("PeerStockCount=" + peerSelection.Count.ToString(CultureInfo.InvariantCulture));
             if (failures.Count > 0)
             {
                 lines.Add("Failures=" + string.Join(",", failures));
@@ -445,6 +413,159 @@ public static class SinitekCliBridge
         }
 
         return match;
+    }
+
+    private static PeerStockSelection ResolvePeerStockSelection(
+        Sinitek.WriterModel.StockData stock,
+        string explicitPeerStock,
+        string previousGsdm)
+    {
+        if (!string.IsNullOrWhiteSpace(explicitPeerStock))
+        {
+            string normalized = NormalizePeerStockList(explicitPeerStock);
+            return new PeerStockSelection(normalized, "explicit");
+        }
+
+        if (stock == null || string.IsNullOrWhiteSpace(stock.Gsdm) || IsNEEQStock(stock.Gsdm))
+        {
+            return new PeerStockSelection(string.Empty, "none");
+        }
+
+        string existingPeerStock = NormalizePeerStockList(GetDocProperty("PeerStock"));
+        if (string.Equals(NormalizeGsdm(previousGsdm), NormalizeGsdm(stock.Gsdm), StringComparison.OrdinalIgnoreCase))
+        {
+            return new PeerStockSelection(existingPeerStock, "workbook");
+        }
+
+        var peers = GetDefaultPeerStocks(stock.Gsdm);
+        var gsdms = new List<string>();
+        foreach (var peer in peers)
+        {
+            AddUniqueGsdm(gsdms, peer.Gsdm);
+        }
+
+        return new PeerStockSelection(string.Join(",", gsdms.ToArray()), "cloud-default");
+    }
+
+    private static List<Sinitek.WriterModel.StockData> GetDefaultPeerStocks(string gsdm)
+    {
+        var peers = new List<Sinitek.WriterModel.StockData>();
+        string url = (SinitekExcel.WriterUtil.ModelUtil.ModelUrl ?? string.Empty).TrimEnd('/') + "/api/company/analysis/gsdms";
+        IDictionary parameters = new Hashtable();
+        parameters.Add("gsdm", gsdm);
+
+        object webHandler = SinitekExcel.WriterUtil.Web.ModelWebDataHandler.NewInstance();
+        Hashtable response = InvokeMethod(webHandler, "GetMap", false, url, parameters) as Hashtable;
+        if (response == null || !response.ContainsKey("data") || response["data"] == null)
+        {
+            return peers;
+        }
+
+        JArray data = ToJArray(response["data"]);
+        if (data == null)
+        {
+            return peers;
+        }
+
+        foreach (JToken token in data)
+        {
+            var peer = DeserializeStock(token);
+            if (peer != null && !string.IsNullOrWhiteSpace(peer.Gsdm))
+            {
+                peers.Add(peer);
+            }
+        }
+
+        return peers;
+    }
+
+    private static JArray ToJArray(object value)
+    {
+        JArray array = value as JArray;
+        if (array != null)
+        {
+            return array;
+        }
+
+        JToken token = value as JToken;
+        if (token != null)
+        {
+            return FindStockArray(token, 0);
+        }
+
+        string text = Convert.ToString(value, CultureInfo.InvariantCulture);
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+
+        text = text.Trim();
+        if (!text.StartsWith("[", StringComparison.Ordinal) && !text.StartsWith("{", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        return FindStockArray(JToken.Parse(text), 0);
+    }
+
+    private static string NormalizePeerStockList(string peerStock)
+    {
+        var gsdms = new List<string>();
+        if (!string.IsNullOrWhiteSpace(peerStock))
+        {
+            foreach (string item in peerStock.Split(new[] { ',', ';', '\r', '\n', '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                AddUniqueGsdm(gsdms, item);
+            }
+        }
+
+        return string.Join(",", gsdms.ToArray());
+    }
+
+    private static void AddUniqueGsdm(List<string> gsdms, string gsdm)
+    {
+        string normalized = NormalizeGsdm(gsdm);
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return;
+        }
+
+        foreach (string existing in gsdms)
+        {
+            if (string.Equals(existing, normalized, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+        }
+
+        gsdms.Add(normalized);
+    }
+
+    private static string NormalizeGsdm(string gsdm)
+    {
+        return string.IsNullOrWhiteSpace(gsdm) ? string.Empty : gsdm.Trim();
+    }
+
+    private static bool IsNEEQStock(string gsdm)
+    {
+        if (string.IsNullOrWhiteSpace(gsdm))
+        {
+            return false;
+        }
+
+        Type commonType = Assembly.LoadFrom(AddinDll).GetType("Sinitek.WriterUtil.Common");
+        if (commonType == null)
+        {
+            return false;
+        }
+
+        MethodInfo method = commonType.GetMethod("IsNEEQStock", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
+        if (method == null)
+        {
+            return false;
+        }
+
+        return (bool)method.Invoke(null, new object[] { gsdm });
     }
 
     private static List<Sinitek.WriterModel.StockData> SearchStocks(string query, int count, string modelVersion, string modelType)
@@ -779,15 +900,6 @@ public static class SinitekCliBridge
         if (!string.IsNullOrWhiteSpace(username) || !string.IsNullOrEmpty(password))
         {
             Login(username, password);
-        }
-    }
-
-    private static void EnsureTokenForStockSearch()
-    {
-        string tokenId = Safe(() => SinitekExcel.WriterUtil.WriteUtil.TokenId);
-        if (string.IsNullOrWhiteSpace(tokenId) || tokenId.StartsWith("ERR:", StringComparison.Ordinal))
-        {
-            throw new InvalidOperationException("Stock search requires login token. Set SINITEK_USERNAME/SINITEK_PASSWORD, or pass -Username and -Password.");
         }
     }
 
@@ -1496,6 +1608,20 @@ public static class SinitekCliBridge
         public string ShareUnitName { get; private set; }
     }
 
+    private sealed class PeerStockSelection
+    {
+        public PeerStockSelection(string gsdms, string source)
+        {
+            Gsdms = gsdms ?? string.Empty;
+            Source = source ?? string.Empty;
+            Count = string.IsNullOrWhiteSpace(Gsdms) ? 0 : Gsdms.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries).Length;
+        }
+
+        public string Gsdms { get; private set; }
+        public string Source { get; private set; }
+        public int Count { get; private set; }
+    }
+
     private sealed class ExcelSession : IDisposable
     {
         public Excel.Application App { get; private set; }
@@ -1523,6 +1649,7 @@ public static class SinitekCliBridge
             {
                 processId = FindNewExcelProcessId();
             }
+            WriteExcelPidFile(processId);
             App.Visible = visible;
             App.DisplayAlerts = false;
             try
@@ -1592,6 +1719,33 @@ public static class SinitekCliBridge
                     process.Kill();
                     process.WaitForExit(5000);
                 }
+            }
+            catch
+            {
+            }
+        }
+
+        private static void WriteExcelPidFile(int excelProcessId)
+        {
+            if (excelProcessId <= 0)
+            {
+                return;
+            }
+
+            string path = Environment.GetEnvironmentVariable("SINITEK_EXCEL_PID_FILE");
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return;
+            }
+
+            try
+            {
+                string directory = Path.GetDirectoryName(path);
+                if (!string.IsNullOrWhiteSpace(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
+                File.WriteAllText(path, excelProcessId.ToString(CultureInfo.InvariantCulture), Encoding.UTF8);
             }
             catch
             {

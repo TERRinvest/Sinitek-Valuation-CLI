@@ -14,4 +14,5 @@ defaults:
   migrate: false
   add_output: false
   company_management_type: "2"
-  count: 10
+  peer_stock: ""
+  timeout_seconds: 300

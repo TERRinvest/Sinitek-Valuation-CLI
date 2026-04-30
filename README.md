@@ -123,7 +123,7 @@ $env:SINITEK_PASSWORD = "your-password"
 如果不想设置环境变量，也可以临时传参：
 
 ```powershell
-.\sinitek.cmd -Action stock-search -Stock 600519 -Username "your.name@domainname.com" -Password "your-password"
+.\sinitek.cmd -Action login -Username "your.name@domainname.com" -Password "your-password"
 ```
 
 注意：CLI 每次执行都是新进程，`login` action 主要用于校验账号密码，不等于后续命令已经登录。实际执行需要每次能从环境变量或命令参数拿到账号密码。
@@ -147,7 +147,8 @@ defaults:
   migrate: false
   add_output: false
   company_management_type: "2"
-  count: 10
+  peer_stock: ""
+  timeout_seconds: 300
 ```
 
 | 字段 | 含义 |
@@ -165,7 +166,8 @@ defaults:
 | `migrate` | 是否执行历史数据迁移。 |
 | `add_output` | 更新完成后是否顺带生成 output sheet。 |
 | `company_management_type` | 公司经营数据口径，当前默认 `"2"`。 |
-| `count` | 股票搜索默认返回条数。 |
+| `peer_stock` | 可比公司 GSDM 列表，逗号分隔；留空时复刻插件逻辑自动选择。 |
+| `timeout_seconds` | CLI 单次执行的总超时秒数，默认 300；设为 `0` 可关闭总超时监督。 |
 
 YAML 解析器只支持当前这种简单结构：顶层字段和一层嵌套字段，缩进使用两个空格。
 
@@ -201,26 +203,6 @@ YAML 解析器只支持当前这种简单结构：顶层字段和一层嵌套字
 .\sinitek.cmd -Action login
 ```
 
-搜索股票：
-
-```powershell
-.\sinitek.cmd -Action stock-search -Stock 600519 -Count 3
-```
-
-股票搜索输出列顺序：
-
-```text
-StockCode    StockName    Gsdm    MarketCode    MarketName    SecurityCode    IndustryCode
-```
-
-例如：
-
-```text
-600519    贵州茅台    600519.SH            600519.SH
-```
-
-中间空列表示携宁云接口没有返回对应字段。当前实现会在 `gsdm` 为空时用 `SecurityCode` 兜底。
-
 导出 output sheet：
 
 ```powershell
@@ -241,6 +223,12 @@ StockCode    StockName    Gsdm    MarketCode    MarketName    SecurityCode    In
 .\sinitek.cmd -Action update-direct -Stock 600519 -CurrencyUnit 0.0001
 ```
 
+可比公司默认按原插件逻辑处理：如果当前 workbook 已经是同一主公司，继续复用模型现有 `PeerStock`；切换主公司时，用主公司的 `Gsdm` 请求携宁云 `/api/company/analysis/gsdms`，把返回的推荐可比公司 `gsdm` 写入 `PeerStock`。需要手工指定时传逗号分隔的 GSDM：
+
+```powershell
+.\sinitek.cmd -Action update-direct -Stock 600519 -PeerStock "000858.SZ,000568.SZ,600809.SH"
+```
+
 一键输出最终产物（登录、更新数据、生成 output sheet、保存副本）：
 
 ```powershell
@@ -249,6 +237,14 @@ StockCode    StockName    Gsdm    MarketCode    MarketName    SecurityCode    In
 
 `produce` 会强制包含 output sheet，并会按 `currency_unit` / `-CurrencyUnit` 同步报表单位；输出路径仍遵循 `-OutWorkbook`、`output_dir` 或 `-Save` 的保存规则。
 命令成功时会回显 `Artifact=<xlsx路径>`，便于后续脚本直接读取产物位置。
+
+CLI 默认有 300 秒总超时，覆盖整个 PowerShell、Excel COM 和插件调用链。需要放宽时可以传 `-TimeoutSeconds`：
+
+```powershell
+.\sinitek.cmd -Action produce -Stock 600519 -TimeoutSeconds 600
+```
+
+传 `-TimeoutSeconds 0` 可关闭总超时监督。
 
 日常推荐在 `sinitek.yaml` 中配置 `output_dir`，然后让 CLI 自动生成输出文件名，避免覆盖历史结果：
 
@@ -275,6 +271,8 @@ StockCode    StockName    Gsdm    MarketCode    MarketName    SecurityCode    In
 - YAML 中的 `defaults` 是命令行参数的默认值；如果同时存在 `defaults` 和旧版 `fallback`，优先使用 `defaults`。
 - `-Stock` 是股票代码入口，目前不在 YAML 中定义。
 - `-Gsdm` 可手动传公司代码；不传时会通过股票搜索结果解析，必要时用 `SecurityCode` 兜底。
+- `-PeerStock` 可手动覆盖可比公司，传入逗号分隔的 GSDM；不传时使用自动选择逻辑。
+- `-TimeoutSeconds` 默认 300 秒，可用 YAML 的 `defaults.timeout_seconds` 或命令行覆盖；命令行显式传参优先。
 
 ## 变更类 action 的保存规则
 
@@ -309,6 +307,14 @@ ERROR: Stock search timed out after 15 seconds: https://cloudmodel.sinitek.com/a
 ```
 
 处理方式：检查网络、代理、VPN 或携宁云服务状态。CLI 已设置 15 秒超时，避免无限挂起。
+
+总执行超时：
+
+```text
+ERROR: Action 'produce' timed out after 300 seconds.
+```
+
+处理方式：先检查网络、Excel 是否弹出对话框、插件是否卡在更新过程。CLI 超时后会终止本次子 PowerShell，并按本次启动的 Excel PID 尝试清理 Excel 进程，退出码为 `124`。确实需要更久时，传 `-TimeoutSeconds 600` 或在 `sinitek.yaml` 的 `defaults.timeout_seconds` 中调整。
 
 提示缺少参数：
 

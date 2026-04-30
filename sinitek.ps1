@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('inspect', 'login', 'stock-search', 'output', 'update-direct', 'produce')]
+    [ValidateSet('inspect', 'login', 'output', 'update-direct', 'produce')]
     [string]$Action = 'inspect',
 
     [string]$Config = '.\sinitek.yaml',
@@ -25,10 +25,18 @@ param(
     [bool]$UpdateSrcData = $true,
     [bool]$Migrate = $false,
     [bool]$AddOutput = $false,
-    [int]$Count = 10
+    [ValidateRange(0, 86400)]
+    [int]$TimeoutSeconds = 300,
+
+    [switch]$NoTimeoutSupervisor,
+    [string]$ExcelPidFile = ''
 )
 
 $ErrorActionPreference = 'Stop'
+$Utf8NoBom = New-Object System.Text.UTF8Encoding $false
+[Console]::InputEncoding = $Utf8NoBom
+[Console]::OutputEncoding = $Utf8NoBom
+$OutputEncoding = $Utf8NoBom
 
 if ($PSVersionTable.PSEdition -eq 'Core') {
     $ForwardArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath)
@@ -53,8 +61,10 @@ if ($PSVersionTable.PSEdition -eq 'Core') {
 }
 
 $ExplicitParams = @{}
+$InitialBoundParameters = @{}
 foreach ($Key in $PSBoundParameters.Keys) {
     $ExplicitParams[$Key] = $true
+    $InitialBoundParameters[$Key] = $PSBoundParameters[$Key]
 }
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -216,6 +226,232 @@ function Get-CliExceptionMessage {
     return $Exception.Message
 }
 
+function ConvertTo-WindowsCommandLineArgument {
+    param([string]$Argument)
+
+    if ($null -eq $Argument) {
+        return '""'
+    }
+    if ($Argument.Length -gt 0 -and $Argument -notmatch '[\s"]') {
+        return $Argument
+    }
+
+    $Result = '"'
+    $Backslashes = 0
+    foreach ($Character in $Argument.ToCharArray()) {
+        if ($Character -eq '\') {
+            $Backslashes++
+            continue
+        }
+
+        if ($Character -eq '"') {
+            if ($Backslashes -gt 0) {
+                $Result += ('\' * ($Backslashes * 2))
+                $Backslashes = 0
+            }
+            $Result += '\"'
+            continue
+        }
+
+        if ($Backslashes -gt 0) {
+            $Result += ('\' * $Backslashes)
+            $Backslashes = 0
+        }
+        $Result += $Character
+    }
+
+    if ($Backslashes -gt 0) {
+        $Result += ('\' * ($Backslashes * 2))
+    }
+    $Result += '"'
+    return $Result
+}
+
+function Join-WindowsCommandLineArguments {
+    param([string[]]$Arguments)
+
+    return (($Arguments | ForEach-Object { ConvertTo-WindowsCommandLineArgument $_ }) -join ' ')
+}
+
+function Write-RedirectedFile {
+    param(
+        [string]$Path,
+        [switch]$ErrorStream
+    )
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return
+    }
+
+    try {
+        $Text = [IO.File]::ReadAllText($Path, [Text.Encoding]::UTF8)
+    }
+    catch {
+        return
+    }
+    if ($Text.Length -eq 0) {
+        return
+    }
+
+    if ($ErrorStream) {
+        [Console]::Error.Write($Text)
+    }
+    else {
+        [Console]::Out.Write($Text)
+    }
+}
+
+function Read-ExcelPidFile {
+    param([string]$Path)
+
+    $ProcessIds = @()
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return $ProcessIds
+    }
+
+    foreach ($Line in Get-Content -LiteralPath $Path -ErrorAction SilentlyContinue) {
+        $PidText = ([string]$Line).Trim()
+        if ([string]::IsNullOrWhiteSpace($PidText)) {
+            continue
+        }
+        $ParsedPid = 0
+        if ([int]::TryParse($PidText, [ref]$ParsedPid) -and $ParsedPid -gt 0) {
+            $ProcessIds += $ParsedPid
+        }
+    }
+
+    return $ProcessIds | Select-Object -Unique
+}
+
+function Stop-ProcessTree {
+    param([int]$ProcessId)
+
+    try {
+        $Children = Get-CimInstance Win32_Process -Filter "ParentProcessId = $ProcessId" -ErrorAction SilentlyContinue
+        foreach ($Child in $Children) {
+            Stop-ProcessTree -ProcessId ([int]$Child.ProcessId)
+        }
+    }
+    catch {
+    }
+
+    try {
+        Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
+    }
+    catch {
+    }
+}
+
+function Remove-TimeoutTempDirectory {
+    param([string]$Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path -LiteralPath $Path)) {
+        return
+    }
+
+    $ResolvedPath = [IO.Path]::GetFullPath($Path)
+    $ResolvedTemp = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
+    $Leaf = Split-Path -Leaf $ResolvedPath
+    if ($ResolvedPath.StartsWith($ResolvedTemp, [StringComparison]::OrdinalIgnoreCase) -and $Leaf.StartsWith('sinitek-cli-', [StringComparison]::OrdinalIgnoreCase)) {
+        Remove-Item -LiteralPath $ResolvedPath -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Invoke-WithTimeoutSupervisor {
+    param(
+        [int]$TimeoutSeconds,
+        [string]$ActionName
+    )
+
+    $TempRoot = Join-Path ([IO.Path]::GetTempPath()) ('sinitek-cli-' + [Guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $TempRoot -Force | Out-Null
+
+    $StdoutPath = Join-Path $TempRoot 'stdout.txt'
+    $StderrPath = Join-Path $TempRoot 'stderr.txt'
+    $ChildExcelPidFile = Join-Path $TempRoot 'excel.pid'
+
+    $PowerShellExe = Join-Path $PSHOME 'powershell.exe'
+    $ChildArgs = @(
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        $PSCommandPath,
+        '-NoTimeoutSupervisor',
+        '-ExcelPidFile',
+        $ChildExcelPidFile
+    )
+
+    foreach ($Entry in $InitialBoundParameters.GetEnumerator()) {
+        if ($Entry.Key -in @('NoTimeoutSupervisor', 'ExcelPidFile')) {
+            continue
+        }
+
+        $Name = '-' + $Entry.Key
+        $Value = $Entry.Value
+        if ($Value -is [System.Management.Automation.SwitchParameter]) {
+            if ($Value.IsPresent) {
+                $ChildArgs += $Name
+            }
+        }
+        elseif ($Value -is [bool]) {
+            $BoolValue = if ($Value) { '$true' } else { '$false' }
+            $ChildArgs += ($Name + ':' + $BoolValue)
+        }
+        else {
+            $ChildArgs += $Name
+            $ChildArgs += [string]$Value
+        }
+    }
+
+    $ArgumentString = Join-WindowsCommandLineArguments -Arguments $ChildArgs
+    $Process = $null
+    try {
+        $Process = Start-Process `
+            -FilePath $PowerShellExe `
+            -ArgumentList $ArgumentString `
+            -WorkingDirectory (Get-Location).Path `
+            -RedirectStandardOutput $StdoutPath `
+            -RedirectStandardError $StderrPath `
+            -WindowStyle Hidden `
+            -PassThru
+
+        if ($Process.WaitForExit($TimeoutSeconds * 1000)) {
+            $Process.WaitForExit()
+            Write-RedirectedFile -Path $StdoutPath
+            Write-RedirectedFile -Path $StderrPath -ErrorStream
+            exit $Process.ExitCode
+        }
+
+        $ExcelProcessIds = Read-ExcelPidFile -Path $ChildExcelPidFile
+        Stop-ProcessTree -ProcessId $Process.Id
+        try {
+            $Process.WaitForExit(5000) | Out-Null
+        }
+        catch {
+        }
+        foreach ($ExcelProcessId in $ExcelProcessIds) {
+            try {
+                Stop-Process -Id $ExcelProcessId -Force -ErrorAction SilentlyContinue
+            }
+            catch {
+            }
+        }
+
+        Start-Sleep -Milliseconds 200
+        Write-RedirectedFile -Path $StdoutPath
+        Write-RedirectedFile -Path $StderrPath -ErrorStream
+        [Console]::Error.WriteLine("ERROR: Action '$ActionName' timed out after $TimeoutSeconds seconds.")
+        exit 124
+    }
+    finally {
+        if ($Process -and -not $Process.HasExited) {
+            Stop-ProcessTree -ProcessId $Process.Id
+        }
+        Remove-TimeoutTempDirectory -Path $TempRoot
+    }
+}
+
 $ConfigBase = $Root
 if (Test-ExplicitParam 'Config') {
     $ConfigPath = Resolve-OptionalPath -Path $Config -BasePath (Get-Location).Path
@@ -240,7 +476,8 @@ if (-not [string]::IsNullOrWhiteSpace($ConfigPath) -and (Test-Path -LiteralPath 
     Set-FromDefaultConfig -ConfigData $ConfigData -ConfigKey 'add_output' -VariableName 'AddOutput'
     Set-FromDefaultConfig -ConfigData $ConfigData -ConfigKey 'company_management_type' -VariableName 'CompanyManagementType'
     Set-FromDefaultConfig -ConfigData $ConfigData -ConfigKey 'company_management_name' -VariableName 'CompanyManagementName'
-    Set-FromDefaultConfig -ConfigData $ConfigData -ConfigKey 'count' -VariableName 'Count'
+    Set-FromDefaultConfig -ConfigData $ConfigData -ConfigKey 'peer_stock' -VariableName 'PeerStock'
+    Set-FromDefaultConfig -ConfigData $ConfigData -ConfigKey 'timeout_seconds' -VariableName 'TimeoutSeconds'
 
     if (-not (Test-ExplicitParam 'Username') -and $ConfigData.ContainsKey('auth') -and $ConfigData['auth'].ContainsKey('username_env')) {
         $ResolvedUsername = [Environment]::GetEnvironmentVariable([string]$ConfigData['auth']['username_env'])
@@ -254,6 +491,27 @@ if (-not [string]::IsNullOrWhiteSpace($ConfigPath) -and (Test-Path -LiteralPath 
             $Password = $ResolvedPassword
         }
     }
+}
+
+try {
+    $TimeoutSeconds = [int]$TimeoutSeconds
+}
+catch {
+    throw "TimeoutSeconds must be an integer between 0 and 86400."
+}
+if ($TimeoutSeconds -lt 0 -or $TimeoutSeconds -gt 86400) {
+    throw "TimeoutSeconds must be between 0 and 86400."
+}
+
+if (-not $NoTimeoutSupervisor.IsPresent -and $TimeoutSeconds -gt 0) {
+    Invoke-WithTimeoutSupervisor -TimeoutSeconds $TimeoutSeconds -ActionName $Action
+}
+
+if (-not [string]::IsNullOrWhiteSpace($ExcelPidFile)) {
+    $env:SINITEK_EXCEL_PID_FILE = $ExcelPidFile
+}
+else {
+    [Environment]::SetEnvironmentVariable('SINITEK_EXCEL_PID_FILE', $null, 'Process')
 }
 
 if (Test-ExplicitParam 'Workbook') {
@@ -340,9 +598,6 @@ try {
         }
         'login' {
             [SinitekCliBridge]::Login($Username, $Password)
-        }
-        'stock-search' {
-            [SinitekCliBridge]::StockSearch($WorkbookPath, $Stock, $Count, $Username, $Password)
         }
         'output' {
             [SinitekCliBridge]::OutputDirect(

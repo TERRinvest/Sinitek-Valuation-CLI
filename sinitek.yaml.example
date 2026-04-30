@@ -46,6 +46,9 @@ defaults:
   # 映射关系：1=按行业，2=按产品，3=按地区。当前默认 "2" 即按产品。
   company_management_type: "2"
 
-  # 股票搜索返回数量：作为 stock-search 的默认 -Count，传给 /api/stock 的 count 参数。
-  # 只影响 stock-search 输出多少条候选股票；小于等于 0 时程序会回退为 10。
-  count: 10
+  # 可比公司 GSDM 列表，逗号分隔。留空时 CLI 会复刻插件逻辑：
+  # 同一主公司复用模型现有 PeerStock；切换主公司时从携宁云接口自动获取推荐可比公司。
+  peer_stock: ""
+
+  # CLI 单次执行的总超时秒数。默认 300 秒；设为 0 可关闭总超时监督。
+  timeout_seconds: 300
