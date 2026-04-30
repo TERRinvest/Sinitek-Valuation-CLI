@@ -1,6 +1,6 @@
 # Sinitek CLI Bridge
 
-这个项目把 Excel 里的“携宁云估值”插件能力包装成命令行入口，避免在 Excel GUI 里手工点按钮。入口统一走 `sinitek-cli.ps1`，外层提供 `sinitek.cmd`、`sinitek.ps1`、`sinitek.sh` 方便从不同 shell 调用。
+这个项目把 Excel 里的“携宁云估值”插件能力包装成命令行入口，避免在 Excel GUI 里手工点按钮。主实现统一走 `sinitek.ps1`，外层保留 `sinitek.cmd` 和 `sinitek.sh` 适配不同 shell。
 
 注意：这是 Windows-only 工具。Excel COM 和携宁插件必须运行在 Windows 侧；Git Bash/WSL 只能作为命令入口，不能作为原生 Linux 运行环境。
 
@@ -30,6 +30,8 @@ $env:SINITEK_PASSWORD = "your-password"
 
 生成 output sheet 时，CLI 会直接从用户名环境变量的邮箱域名提取输出表后缀。例如 `your.name@domainname.com` 会使用 `@domainname.com`，不需要在 YAML 中单独配置。
 
+敲入命令到生成文件大约需要50s。
+
 ## 运行环境
 
 - Windows + Microsoft Excel，支持 COM 自动化。
@@ -45,7 +47,7 @@ $env:SINITEK_PASSWORD = "your-password"
 | --- | --- | --- |
 | 操作系统 | Windows 桌面环境 | 必需。需要能启动本机 Excel COM，不支持原生 Linux/headless 环境。 |
 | Office | Microsoft Excel | 必需。CLI 会通过 COM 自动化打开和保存 xlsx。 |
-| PowerShell | Windows PowerShell 5.1 | 必需。`sinitek-cli.ps1` 最终在 `powershell.exe` 下运行。 |
+| PowerShell | Windows PowerShell 5.1 | 必需。`sinitek.ps1` 最终在 `powershell.exe` 下运行。 |
 | PowerShell | PowerShell 7 / `pwsh` | 可选。入口会自动转发到 Windows PowerShell 5.1。 |
 | 携宁插件 | `C:\Sinitek\SinitekExcelAddin\SinitekExcel.dll` | 必需。核心插件 DLL。 |
 | 携宁插件 | `C:\Sinitek\SinitekExcelAddin\Newtonsoft.Json.dll` | 必需。随携宁插件安装的 JSON 依赖。 |
@@ -74,16 +76,15 @@ C:\Program Files\Microsoft Office\root\Office16\ADDINS\Microsoft Power Query for
 C:\Windows\assembly\GAC\Extensibility\7.0.3300.0__b03f5f7f11d50a3a\extensibility.dll
 ```
 
-如果这些路径都不存在，CLI 会报 `Required file not found`，需要先修复 Office/插件安装环境，或在 `sinitek-cli.ps1` 中补充本机实际路径。
+如果这些路径都不存在，CLI 会报 `Required file not found`，需要先修复 Office/插件安装环境，或在 `sinitek.ps1` 中补充本机实际路径。
 
 ## 文件说明
 
 | 文件 | 作用 |
 | --- | --- |
-| `sinitek-cli.ps1` | 主入口，读取 YAML、加载插件 DLL、调用 C# bridge。 |
+| `sinitek.ps1` | 主入口，读取 YAML、加载插件 DLL、调用 C# bridge。 |
 | `SinitekCliBridge.cs` | C# 桥接层，负责 Excel COM、插件调用、股票搜索和文件保存。 |
 | `sinitek.cmd` | Windows 推荐入口，cmd、PowerShell、pwsh 都可以调用。 |
-| `sinitek.ps1` | PowerShell 包装入口，仍转发到 Windows PowerShell。 |
 | `sinitek.sh` | Git Bash/WSL 风格入口，内部仍调用 Windows 的 `powershell.exe`。 |
 | `sinitek.yaml` | 本机默认配置。 |
 | `sinitek.yaml.example` | 配置样例，可复制后修改。 |
