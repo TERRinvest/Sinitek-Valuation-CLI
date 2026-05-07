@@ -148,6 +148,11 @@ defaults:
   add_output: false
   company_management_type: "2"
   peer_stock: ""
+  prediction_scope: "all"
+  prediction_rows: ""
+  prediction_indicators: ""
+  prediction_method: ""
+  prediction_settings: ""
   timeout_seconds: 300
 ```
 
@@ -167,6 +172,11 @@ defaults:
 | `add_output` | 更新完成后是否顺带生成 output sheet。 |
 | `company_management_type` | 公司经营数据口径，当前默认 `"2"`。 |
 | `peer_stock` | 可比公司 GSDM 列表，逗号分隔；留空时复刻插件逻辑自动选择。 |
+| `prediction_scope` | `predict` 的批量范围，支持 `all`、`sales`、`capital`。 |
+| `prediction_rows` | `predict` 的批量行号筛选，逗号/分号分隔。 |
+| `prediction_indicators` | `predict` 的批量财务指标名筛选，逗号/分号分隔。 |
+| `prediction_method` | `predict` 的批量预测方法，例如 `latest1`、`avg3`、`weighted3`。 |
+| `prediction_settings` | `predict` 的精确设置，格式为 `指标名=方法`、`scope:行号=方法` 或 `控件名=方法`。 |
 | `timeout_seconds` | CLI 单次执行的总超时秒数，默认 300；设为 `0` 可关闭总超时监督。 |
 
 YAML 解析器只支持当前这种简单结构：顶层字段和一层嵌套字段，缩进使用两个空格。
@@ -189,38 +199,69 @@ YAML 解析器只支持当前这种简单结构：顶层字段和一层嵌套字
 .\sinitek.cmd -Action produce -Stock 600519 -CurrencyUnit 1
 ```
 
-## 常用命令
+## 命令
 
-检查当前模型和插件状态：
+所有命令都通过 `-Action` 选择动作。当前公开 action 如下：
+
+| Action | 作用 | 修改 workbook | 常用参数 |
+| --- | --- | --- | --- |
+| `inspect` | 检查模型、插件和登录状态 | 否 | `-Workbook` |
+| `login` | 校验携宁云账号密码 | 否 | `-Username`、`-Password` |
+| `output` | 生成 output sheet 并保存 | 是 | `-Stock`、`-CurrencyUnit`、`-OutWorkbook` |
+| `update` | 更新模型历史数据和相关表 | 是 | `-Stock`、`-HistoryYear`、`-ForecastYear`、`-PeerStock` |
+| `produce` | 一键更新并生成 output sheet | 是 | `-Stock`、`-CurrencyUnit`、`-TimeoutSeconds` |
+| `predict` | 执行“预测数据设置” | 是 | `-PredictionMethod`、`-PredictionIndicators`、`-PredictionSettings` |
+
+### inspect
+
+检查当前 workbook、插件版本、模型版本、登录状态和关键自定义属性：
 
 ```powershell
 .\sinitek.cmd -Action inspect
 ```
 
-校验账号密码：
+### login
+
+校验账号密码是否可用：
 
 ```powershell
 .\sinitek.cmd -Action login
 ```
 
-导出 output sheet：
+也可以临时传入账号密码：
+
+```powershell
+.\sinitek.cmd -Action login -Username "your.name@domainname.com" -Password "your-password"
+```
+
+`login` 只用于校验；CLI 每次执行都是新进程，后续 `update`、`output`、`produce` 仍需要能从环境变量或命令参数读取账号密码。
+
+### output
+
+导出 output sheet 并保存为副本：
 
 ```powershell
 .\sinitek.cmd -Action output -Stock 600519 -OutWorkbook .\output\maotai-output.xlsx
 ```
 
-`output` 会在导出前先按 `currency_unit` / `-CurrencyUnit` 同步报表单位。
+`output` 会在导出前先按 `currency_unit` / `-CurrencyUnit` 同步报表单位。需要临时切换单位时直接传参：
 
-直接更新模型并保存副本：
+```powershell
+.\sinitek.cmd -Action output -Stock 600519 -CurrencyUnit 0.0001
+```
+
+### update
+
+更新模型历史数据、附注、经营数据、可比分析等，并保存副本：
 
 ```powershell
 .\sinitek.cmd -Action update -Stock 600519 -OutWorkbook .\output\maotai-updated.xlsx
 ```
 
-需要临时切换报表单位时，可以直接传 `-CurrencyUnit`：
+需要临时调整历史年数、预测年数或货币单位时，可以直接覆盖：
 
 ```powershell
-.\sinitek.cmd -Action update -Stock 600519 -CurrencyUnit 0.0001
+.\sinitek.cmd -Action update -Stock 600519 -HistoryYear 5 -ForecastYear 4 -CurrencyUnit 0.0001
 ```
 
 可比公司默认按原插件逻辑处理：如果当前 workbook 已经是同一主公司，继续复用模型现有 `PeerStock`；切换主公司时，用主公司的 `Gsdm` 请求携宁云 `/api/company/analysis/gsdms`，把返回的推荐可比公司 `gsdm` 写入 `PeerStock`。需要手工指定时传逗号分隔的 GSDM：
@@ -229,16 +270,23 @@ YAML 解析器只支持当前这种简单结构：顶层字段和一层嵌套字
 .\sinitek.cmd -Action update -Stock 600519 -PeerStock "000858.SZ,000568.SZ,600809.SH"
 ```
 
-一键输出最终产物（登录、更新数据、生成 output sheet、保存副本）：
+日常推荐在 `sinitek.yaml` 中配置 `output_dir`，然后让 CLI 自动生成输出文件名，避免覆盖历史结果：
+
+```powershell
+.\sinitek.cmd -Action update -Stock 600519
+```
+
+### produce
+
+一键输出最终产物：登录校验、更新数据、生成 output sheet、保存副本。
 
 ```powershell
 .\sinitek.cmd -Action produce -Stock 600519
 ```
 
-`produce` 会强制包含 output sheet，并会按 `currency_unit` / `-CurrencyUnit` 同步报表单位；输出路径仍遵循 `-OutWorkbook`、`output_dir` 或 `-Save` 的保存规则。
-命令成功时会回显 `Artifact=<xlsx路径>`，便于后续脚本直接读取产物位置。
+`produce` 会强制包含 output sheet，并会按 `currency_unit` / `-CurrencyUnit` 同步报表单位；输出路径遵循 `-OutWorkbook`、`output_dir` 或 `-Save` 的保存规则。命令成功时会回显 `Artifact=<xlsx路径>`，便于后续脚本直接读取产物位置。
 
-CLI 默认有 300 秒总超时，覆盖整个 PowerShell、Excel COM 和插件调用链。需要放宽时可以传 `-TimeoutSeconds`：
+CLI 默认有 300 秒总超时，覆盖 PowerShell、Excel COM 和插件调用链。需要放宽时可以传 `-TimeoutSeconds`：
 
 ```powershell
 .\sinitek.cmd -Action produce -Stock 600519 -TimeoutSeconds 600
@@ -246,21 +294,74 @@ CLI 默认有 300 秒总超时，覆盖整个 PowerShell、Excel COM 和插件�
 
 传 `-TimeoutSeconds 0` 可关闭总超时监督。
 
-日常推荐在 `sinitek.yaml` 中配置 `output_dir`，然后让 CLI 自动生成输出文件名，避免覆盖历史结果：
+### predict
+
+`predict` 对应插件 `btnSet` / “预测数据设置”功能。CLI 会打开模型，写入预测设置自定义属性，并调用插件预测设置表单的公式写入逻辑，不弹 GUI。
+
+按范围批量设置：
 
 ```powershell
-.\sinitek.cmd -Action update -Stock 600519
+.\sinitek.cmd -Action predict -PredictionScope sales -PredictionMethod avg3 -OutWorkbook .\output\maotai-predict.xlsx
 ```
 
-只有需要固定文件名时，再显式传 `-OutWorkbook`。
-
-强制保存回原模板：
+按财务指标名批量设置：
 
 ```powershell
-.\sinitek.cmd -Action update -Stock 600519 -Save
+.\sinitek.cmd -Action predict -PredictionIndicators "研发费用率,所得税税率,应收账款周转天数" -PredictionMethod weighted3 -OutWorkbook .\output\maotai-predict.xlsx
 ```
 
-谨慎使用 `-Save`，它会写回原 workbook。
+精确到单个指标、每个指标单独指定方法：
+
+```powershell
+.\sinitek.cmd -Action predict -PredictionSettings "研发费用率=avg3,所得税税率=weighted2,应收账款周转天数=zero" -OutWorkbook .\output\maotai-predict.xlsx
+```
+
+底层控件名仍可直接调用：
+
+```powershell
+.\sinitek.cmd -Action predict -PredictionSettings "ASalescmb_31=avg3,ACapitalcmb_15=weighted2"
+```
+
+`-PredictionMethod` 支持 `latest1`、`avg2`、`avg3`、`weighted2`、`weighted3`、`custom`、`zero`，也支持插件下拉框索引 `0`-`6`。`-PredictionScope` 支持 `all`、`sales`、`capital`；当前 A 股模板的预测设置表单实际暴露 `sales` 和 `capital` 两组指标。`-PredictionRows` 和 `-PredictionIndicators` 都为空时，表示所选范围内全部指标。
+
+| 参数 | 用法 |
+| --- | --- |
+| `-PredictionScope` | 批量范围：`all`、`sales`、`capital`。 |
+| `-PredictionRows` | 按 Excel 行号筛选，逗号/分号分隔，例如 `22,31,48`。 |
+| `-PredictionIndicators` | 按财务指标名筛选，逗号/分号分隔，例如 `研发费用率,所得税税率`。 |
+| `-PredictionSettings` | 精确设置，格式为 `指标名=方法`、`scope:行号=方法` 或 `控件名=方法`。 |
+
+当前 A 股模板映射如下，行号来自插件预测设置表单实际绑定的 Excel 行：
+
+| Scope | Sheet | 行号 | 控件名 | 推荐指标名 | 可用别名示例 |
+| --- | --- | ---: | --- | --- | --- |
+| `sales` | 销售预测 | 22 | `ASalescmb_22` | 税金及附加/营业收入 | 税金及附加率 |
+| `sales` | 销售预测 | 25 | `ASalescmb_25` | 销售费用/营业收入 | 销售费用率 |
+| `sales` | 销售预测 | 28 | `ASalescmb_28` | 管理费用/营业收入 | 管理费用率 |
+| `sales` | 销售预测 | 31 | `ASalescmb_31` | 研发费用/营业收入 | 研发费用率 |
+| `sales` | 销售预测 | 34 | `ASalescmb_34` | 其他收益/营业收入 | 其他收益率 |
+| `sales` | 销售预测 | 37 | `ASalescmb_37` | 投资收益/营业收入 | 投资收益率 |
+| `sales` | 销售预测 | 40 | `ASalescmb_40` | 资产处置收益/营业收入 | 资产处置收益率 |
+| `sales` | 销售预测 | 42 | `ASalescmb_42` | 营业外收入 | 营业外收入 |
+| `sales` | 销售预测 | 43 | `ASalescmb_43` | 营业外支出 | 营业外支出 |
+| `sales` | 销售预测 | 48 | `ASalescmb_48` | 所得税税率 | 所得税率 |
+| `sales` | 销售预测 | 51 | `ASalescmb_51` | 少数股东损益/净利润 | 少数股东损益率 |
+| `capital` | 资产预测 | 11 | `ACapitalcmb_11` | 应收票据周转天数 | 应收票据/营业收入 |
+| `capital` | 资产预测 | 15 | `ACapitalcmb_15` | 应收账款周转天数 | 应收账款/营业收入 |
+| `capital` | 资产预测 | 19 | `ACapitalcmb_19` | 应收款项融资/营业收入 | 应收款项融资占收入比 |
+| `capital` | 资产预测 | 22 | `ACapitalcmb_22` | 预付账款/营业成本 | 预付账款占成本比 |
+| `capital` | 资产预测 | 25 | `ACapitalcmb_25` | 其他应收款周转天数 | 其他应收款/营业收入 |
+| `capital` | 资产预测 | 29 | `ACapitalcmb_29` | 存货周转天数 | 存货/营业成本 |
+| `capital` | 资产预测 | 33 | `ACapitalcmb_33` | 合同资产/营业收入 | 合同资产占收入比 |
+| `capital` | 资产预测 | 39 | `ACapitalcmb_39` | 应付票据周转天数 | 应付票据/营业成本 |
+| `capital` | 资产预测 | 43 | `ACapitalcmb_43` | 应付账款周转天数 | 应付账款/营业成本 |
+| `capital` | 资产预测 | 47 | `ACapitalcmb_47` | 预收账款/营业收入 | 预收账款占收入比 |
+| `capital` | 资产预测 | 50 | `ACapitalcmb_50` | 合同负债/营业收入 | 合同负债占收入比 |
+| `capital` | 资产预测 | 53 | `ACapitalcmb_53` | 应付职工薪酬/营业成本 | 应付职工薪酬占成本比 |
+| `capital` | 资产预测 | 56 | `ACapitalcmb_56` | 应交税费/营业收入 | 应交税费占收入比 |
+| `capital` | 资产预测 | 59 | `ACapitalcmb_59` | 其他应付款/营业成本 | 其他应付款占成本比 |
+
+命令执行后回显 `Applied=` 是底层控件名，`AppliedIndicators=` 是财务指标名，二者可用于复核设置是否命中预期行。
 
 ## 参数覆盖规则
 
@@ -281,11 +382,12 @@ CLI 默认有 300 秒总超时，覆盖整个 PowerShell、Excel COM 和插件�
 - `output`
 - `update`
 - `produce`
+- `predict`
 
 这些 action 必须满足以下条件之一：
 
 - 传 `-OutWorkbook <path>` 保存到指定文件。
-- 配置或传入 `-OutputDir <dir>` 自动生成输出文件，命名格式为 `<原始Workbook文件名>-<Action>-<Stock>-<yyyyMMdd-HHmmss>.xlsx`，其中 `Action` 统一首字母大写，`Stock` 为纯数字股票代码。
+- 配置或传入 `-OutputDir <dir>` 自动生成输出文件，命名格式为 `<原始Workbook文件名>-<Action>-<Stock>-<yyyyMMdd-HHmmss>.xlsx`，其中 `Action` 统一首字母大写，`Stock` 为纯数字股票代码；`predict` 未提供股票代码时会省略 `Stock` 段。
 - 传 `-Save` 写回原文件。
 
 如果都没有提供，CLI 会拒绝执行，避免无意修改原模板。

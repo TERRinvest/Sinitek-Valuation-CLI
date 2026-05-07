@@ -16,4 +16,3 @@ if ! command -v powershell.exe >/dev/null 2>&1; then
 fi
 
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$script_path" "$@"
-exit $?

@@ -31,6 +31,35 @@ public static class SinitekCliBridge
         new CurrencyUnitSpec("0.00000001", 0.00000001D, "\u4ebf\u5143", "\u4ebf\u80a1")
     };
 
+    private static readonly PredictionIndicatorDefinition[] PredictionIndicators = new[]
+    {
+        new PredictionIndicatorDefinition("sales", 22, "\u7a0e\u91d1\u53ca\u9644\u52a0/\u8425\u4e1a\u6536\u5165", "\u7a0e\u91d1\u53ca\u9644\u52a0\u7387", "\u7a0e\u91d1\u53ca\u9644\u52a0\u5360\u6536\u5165\u6bd4"),
+        new PredictionIndicatorDefinition("sales", 25, "\u9500\u552e\u8d39\u7528/\u8425\u4e1a\u6536\u5165", "\u9500\u552e\u8d39\u7528\u7387", "\u9500\u552e\u8d39\u7528\u5360\u6536\u5165\u6bd4"),
+        new PredictionIndicatorDefinition("sales", 28, "\u7ba1\u7406\u8d39\u7528/\u8425\u4e1a\u6536\u5165", "\u7ba1\u7406\u8d39\u7528\u7387", "\u7ba1\u7406\u8d39\u7528\u5360\u6536\u5165\u6bd4"),
+        new PredictionIndicatorDefinition("sales", 31, "\u7814\u53d1\u8d39\u7528/\u8425\u4e1a\u6536\u5165", "\u7814\u53d1\u8d39\u7528\u7387", "\u7814\u53d1\u8d39\u7528\u5360\u6536\u5165\u6bd4"),
+        new PredictionIndicatorDefinition("sales", 34, "\u5176\u4ed6\u6536\u76ca/\u8425\u4e1a\u6536\u5165", "\u5176\u4ed6\u6536\u76ca\u7387", "\u5176\u4ed6\u6536\u76ca\u5360\u6536\u5165\u6bd4"),
+        new PredictionIndicatorDefinition("sales", 37, "\u6295\u8d44\u6536\u76ca/\u8425\u4e1a\u6536\u5165", "\u6295\u8d44\u6536\u76ca\u7387", "\u6295\u8d44\u6536\u76ca\u5360\u6536\u5165\u6bd4"),
+        new PredictionIndicatorDefinition("sales", 40, "\u8d44\u4ea7\u5904\u7f6e\u6536\u76ca/\u8425\u4e1a\u6536\u5165", "\u8d44\u4ea7\u5904\u7f6e\u6536\u76ca\u7387", "\u8d44\u4ea7\u5904\u7f6e\u6536\u76ca\u5360\u6536\u5165\u6bd4"),
+        new PredictionIndicatorDefinition("sales", 42, "\u8425\u4e1a\u5916\u6536\u5165"),
+        new PredictionIndicatorDefinition("sales", 43, "\u8425\u4e1a\u5916\u652f\u51fa"),
+        new PredictionIndicatorDefinition("sales", 48, "\u6240\u5f97\u7a0e\u7a0e\u7387", "\u6240\u5f97\u7a0e\u7387", "\u6709\u6548\u6240\u5f97\u7a0e\u7387"),
+        new PredictionIndicatorDefinition("sales", 51, "\u5c11\u6570\u80a1\u4e1c\u635f\u76ca/\u51c0\u5229\u6da6", "\u5c11\u6570\u80a1\u4e1c\u635f\u76ca\u7387", "\u5c11\u6570\u80a1\u4e1c\u635f\u76ca\u5360\u51c0\u5229\u6da6\u6bd4"),
+        new PredictionIndicatorDefinition("capital", 11, "\u5e94\u6536\u7968\u636e\u5468\u8f6c\u5929\u6570", "\u5e94\u6536\u7968\u636e\u5468\u8f6c\u5929\u6570\uff08\u76f8\u5bf9\u4e8e\u8425\u4e1a\u6536\u5165\uff09", "\u5e94\u6536\u7968\u636e/\u8425\u4e1a\u6536\u5165"),
+        new PredictionIndicatorDefinition("capital", 15, "\u5e94\u6536\u8d26\u6b3e\u5468\u8f6c\u5929\u6570", "\u5e94\u6536\u8d26\u6b3e\u5468\u8f6c\u5929\u6570\uff08\u76f8\u5bf9\u4e8e\u8425\u4e1a\u6536\u5165\uff09", "\u5e94\u6536\u8d26\u6b3e/\u8425\u4e1a\u6536\u5165"),
+        new PredictionIndicatorDefinition("capital", 19, "\u5e94\u6536\u6b3e\u9879\u878d\u8d44/\u8425\u4e1a\u6536\u5165", "\u5e94\u6536\u6b3e\u9879\u878d\u8d44\u5360\u6536\u5165\u6bd4", "\u5e94\u6536\u6b3e\u9879\u878d\u8d44\u6bd4\u8425\u4e1a\u6536\u5165"),
+        new PredictionIndicatorDefinition("capital", 22, "\u9884\u4ed8\u8d26\u6b3e/\u8425\u4e1a\u6210\u672c", "\u9884\u4ed8\u8d26\u6b3e\u5360\u6210\u672c\u6bd4", "\u9884\u4ed8\u8d26\u6b3e\u6bd4\u8425\u4e1a\u6210\u672c"),
+        new PredictionIndicatorDefinition("capital", 25, "\u5176\u4ed6\u5e94\u6536\u6b3e\u5468\u8f6c\u5929\u6570", "\u5176\u4ed6\u5e94\u6536\u6b3e\u5468\u8f6c\u5929\u6570\uff08\u76f8\u5bf9\u4e8e\u8425\u4e1a\u6536\u5165\uff09", "\u5176\u4ed6\u5e94\u6536\u6b3e/\u8425\u4e1a\u6536\u5165"),
+        new PredictionIndicatorDefinition("capital", 29, "\u5b58\u8d27\u5468\u8f6c\u5929\u6570", "\u5b58\u8d27\u5468\u8f6c\u5929\u6570\uff08\u76f8\u5bf9\u4e8e\u8425\u4e1a\u6210\u672c\uff09", "\u5b58\u8d27/\u8425\u4e1a\u6210\u672c"),
+        new PredictionIndicatorDefinition("capital", 33, "\u5408\u540c\u8d44\u4ea7/\u8425\u4e1a\u6536\u5165", "\u5408\u540c\u8d44\u4ea7\u5360\u6536\u5165\u6bd4", "\u5408\u540c\u8d44\u4ea7\u6bd4\u8425\u4e1a\u6536\u5165"),
+        new PredictionIndicatorDefinition("capital", 39, "\u5e94\u4ed8\u7968\u636e\u5468\u8f6c\u5929\u6570", "\u5e94\u4ed8\u7968\u636e\u5468\u8f6c\u5929\u6570\uff08\u76f8\u5bf9\u4e8e\u8425\u4e1a\u6210\u672c\uff09", "\u5e94\u4ed8\u7968\u636e/\u8425\u4e1a\u6210\u672c"),
+        new PredictionIndicatorDefinition("capital", 43, "\u5e94\u4ed8\u8d26\u6b3e\u5468\u8f6c\u5929\u6570", "\u5e94\u4ed8\u8d26\u6b3e\u5468\u8f6c\u5929\u6570\uff08\u76f8\u5bf9\u4e8e\u8425\u4e1a\u6210\u672c\uff09", "\u5e94\u4ed8\u8d26\u6b3e/\u8425\u4e1a\u6210\u672c"),
+        new PredictionIndicatorDefinition("capital", 47, "\u9884\u6536\u8d26\u6b3e/\u8425\u4e1a\u6536\u5165", "\u9884\u6536\u8d26\u6b3e\u5360\u6536\u5165\u6bd4", "\u9884\u6536\u8d26\u6b3e\u6bd4\u8425\u4e1a\u6536\u5165"),
+        new PredictionIndicatorDefinition("capital", 50, "\u5408\u540c\u8d1f\u503a/\u8425\u4e1a\u6536\u5165", "\u5408\u540c\u8d1f\u503a\u5360\u6536\u5165\u6bd4", "\u5408\u540c\u8d1f\u503a\u6bd4\u8425\u4e1a\u6536\u5165"),
+        new PredictionIndicatorDefinition("capital", 53, "\u5e94\u4ed8\u804c\u5de5\u85aa\u916c/\u8425\u4e1a\u6210\u672c", "\u5e94\u4ed8\u804c\u5de5\u85aa\u916c\u5360\u6210\u672c\u6bd4", "\u5e94\u4ed8\u804c\u5de5\u85aa\u916c\u6bd4\u8425\u4e1a\u6210\u672c"),
+        new PredictionIndicatorDefinition("capital", 56, "\u5e94\u4ea4\u7a0e\u8d39/\u8425\u4e1a\u6536\u5165", "\u5e94\u4ea4\u7a0e\u8d39\u5360\u6536\u5165\u6bd4", "\u5e94\u4ea4\u7a0e\u8d39\u6bd4\u8425\u4e1a\u6536\u5165"),
+        new PredictionIndicatorDefinition("capital", 59, "\u5176\u4ed6\u5e94\u4ed8\u6b3e/\u8425\u4e1a\u6210\u672c", "\u5176\u4ed6\u5e94\u4ed8\u6b3e\u5360\u6210\u672c\u6bd4", "\u5176\u4ed6\u5e94\u4ed8\u6b3e\u6bd4\u8425\u4e1a\u6210\u672c"),
+    };
+
     [DllImport("user32.dll")]
     private static extern int GetWindowThreadProcessId(IntPtr hwnd, out int processId);
 
@@ -295,6 +324,83 @@ public static class SinitekCliBridge
         }
     }
 
+    public static string PredictionSettingsDirect(
+        string workbookPath,
+        string outWorkbook,
+        bool saveOriginal,
+        bool visible,
+        string predictionScope,
+        string predictionRows,
+        string predictionIndicators,
+        string predictionMethod,
+        string predictionSettings)
+    {
+        using (var session = new ExcelSession(workbookPath, visible, false))
+        {
+            string handlerType = ResolveHandlerType("btnSet");
+            Type formType = ResolvePredictionFormType(handlerType);
+            var applied = new List<string>();
+            var appliedIndicators = new List<string>();
+
+            object form = Activator.CreateInstance(formType);
+            try
+            {
+                InvokePredictionFormLoad(form);
+
+                var checkBoxes = new List<System.Windows.Forms.CheckBox>();
+                var comboBoxes = new List<System.Windows.Forms.ComboBox>();
+                CollectControls((System.Windows.Forms.Control)form, checkBoxes);
+                CollectControls((System.Windows.Forms.Control)form, comboBoxes);
+
+                var targets = BuildPredictionTargets(checkBoxes, comboBoxes);
+                var selected = ResolvePredictionSelections(
+                    targets,
+                    predictionScope,
+                    predictionRows,
+                    predictionIndicators,
+                    predictionMethod,
+                    predictionSettings);
+
+                foreach (KeyValuePair<PredictionTarget, int> item in selected)
+                {
+                    PredictionTarget target = item.Key;
+                    int methodIndex = item.Value;
+
+                    SetDocProperty(target.ComboName, methodIndex.ToString(CultureInfo.InvariantCulture));
+                    InvokePredictionFormula(form, target, methodIndex);
+                    applied.Add(target.ComboName + "=" + PredictionMethodName(methodIndex));
+                    if (!string.IsNullOrWhiteSpace(target.IndicatorName))
+                    {
+                        appliedIndicators.Add(target.IndicatorName + "=" + PredictionMethodName(methodIndex));
+                    }
+                }
+            }
+            finally
+            {
+                IDisposable disposable = form as IDisposable;
+                if (disposable != null)
+                {
+                    disposable.Dispose();
+                }
+            }
+
+            session.App.CalculateFull();
+            SaveIfRequested(session.Workbook, outWorkbook, saveOriginal);
+
+            var lines = new List<string>();
+            lines.Add("PredictionSettings=true");
+            lines.Add("Handler=" + handlerType);
+            lines.Add("Form=" + formType.FullName);
+            lines.Add("AppliedCount=" + applied.Count.ToString(CultureInfo.InvariantCulture));
+            lines.Add("Applied=" + string.Join(";", applied.ToArray()));
+            if (appliedIndicators.Count > 0)
+            {
+                lines.Add("AppliedIndicators=" + string.Join(";", appliedIndicators.ToArray()));
+            }
+            return string.Join(Environment.NewLine, lines);
+        }
+    }
+
     private static string ResolveHandlerType(string buttonId)
     {
         string modelVersion = ResolveCurrentModelVersion();
@@ -366,6 +472,551 @@ public static class SinitekCliBridge
             case 3: return "bkModel";
             case 4: return "orgiHkModel";
             default: throw new InvalidOperationException("Unsupported model type: " + modelType);
+        }
+    }
+
+    private static Type ResolvePredictionFormType(string handlerType)
+    {
+        string candidate;
+        if (handlerType.IndexOf(".USABLL.", StringComparison.Ordinal) >= 0)
+        {
+            string ns = handlerType.Substring(0, handlerType.LastIndexOf('.'));
+            candidate = ns + ".Form.USPredictedDataForm";
+        }
+        else if (handlerType.IndexOf(".HKBLL.", StringComparison.Ordinal) >= 0
+            || handlerType.IndexOf(".OrgiHKBLL.", StringComparison.Ordinal) >= 0)
+        {
+            string ns = handlerType.Substring(0, handlerType.LastIndexOf('.'));
+            candidate = ns + ".Form.HKPredictedDataForm";
+        }
+        else if (handlerType.IndexOf(".BKBLL.", StringComparison.Ordinal) >= 0)
+        {
+            string ns = handlerType.Substring(0, handlerType.LastIndexOf('.'));
+            candidate = ns + ".Form.APredictedDataForm";
+        }
+        else if (handlerType.IndexOf(".ASBLL.", StringComparison.Ordinal) >= 0)
+        {
+            string ns = handlerType.Substring(0, handlerType.LastIndexOf('.'));
+            candidate = ns + ".Form.APredictedDataForm";
+        }
+        else
+        {
+            throw new InvalidOperationException("Unsupported prediction handler mapping: " + handlerType + ".");
+        }
+
+        Type type = Type.GetType(candidate + ", SinitekExcel")
+            ?? Assembly.LoadFrom(AddinDll).GetType(candidate);
+        if (type != null)
+        {
+            return type;
+        }
+
+        throw new InvalidOperationException("Cannot resolve prediction form type for handler " + handlerType + ".");
+    }
+
+    private static void InvokePredictionFormLoad(object form)
+    {
+        MethodInfo method = FindInstanceMethod(form.GetType(), new[] { "LoginForm_Load", "Form_Load" }, 2);
+        if (method == null)
+        {
+            return;
+        }
+
+        InvokeMethodInfo(form, method, new object[] { form, EventArgs.Empty });
+    }
+
+    private static void InvokePredictionFormula(object form, PredictionTarget target, int methodIndex)
+    {
+        MethodInfo method = form.GetType().GetMethod(
+            "HandleIndicatorFormula",
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+            null,
+            new[] { typeof(int), typeof(int), typeof(string) },
+            null);
+        if (method == null)
+        {
+            method = form.GetType().GetMethod(
+                "Combobox_SelectedIndexChanged",
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                null,
+                new[] { typeof(int), typeof(int), typeof(string) },
+                null);
+        }
+        if (method == null)
+        {
+            throw new MissingMethodException(form.GetType().FullName, "HandleIndicatorFormula");
+        }
+
+        InvokeMethodInfo(form, method, new object[] { methodIndex, target.Row, ResolvePredictionSheetName(target) });
+    }
+
+    private static MethodInfo FindInstanceMethod(Type type, string[] names, int parameterCount)
+    {
+        BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        foreach (string name in names)
+        {
+            foreach (MethodInfo method in type.GetMethods(flags))
+            {
+                if (string.Equals(method.Name, name, StringComparison.Ordinal)
+                    && method.GetParameters().Length == parameterCount)
+                {
+                    return method;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static void InvokeMethodInfo(object target, MethodInfo method, object[] args)
+    {
+        try
+        {
+            method.Invoke(target, args);
+        }
+        catch (TargetInvocationException ex)
+        {
+            Exception inner = ex.InnerException ?? ex;
+            throw new InvalidOperationException("Invocation failed: "
+                + target.GetType().FullName + "." + method.Name + ": " + inner.Message, inner);
+        }
+    }
+
+    private static void CollectControls<T>(System.Windows.Forms.Control root, List<T> result)
+        where T : System.Windows.Forms.Control
+    {
+        foreach (System.Windows.Forms.Control child in root.Controls)
+        {
+            T typed = child as T;
+            if (typed != null)
+            {
+                result.Add(typed);
+            }
+
+            CollectControls(child, result);
+        }
+    }
+
+    private static List<PredictionTarget> BuildPredictionTargets(
+        List<System.Windows.Forms.CheckBox> checkBoxes,
+        List<System.Windows.Forms.ComboBox> comboBoxes)
+    {
+        var comboNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (System.Windows.Forms.ComboBox comboBox in comboBoxes)
+        {
+            comboNames.Add(comboBox.Name);
+        }
+
+        var targets = new List<PredictionTarget>();
+        foreach (System.Windows.Forms.CheckBox checkBox in checkBoxes)
+        {
+            string prefix;
+            int row;
+            if (!TryParsePredictionCheckBoxName(checkBox.Name, out prefix, out row))
+            {
+                continue;
+            }
+
+            string comboName = prefix + "cmb_" + row.ToString(CultureInfo.InvariantCulture);
+            if (!comboNames.Contains(comboName))
+            {
+                continue;
+            }
+
+            string scope = PredictionScopeFromPrefix(prefix);
+            targets.Add(new PredictionTarget(prefix, scope, row, comboName, ResolvePredictionIndicatorName(scope, row)));
+        }
+
+        if (targets.Count == 0)
+        {
+            throw new InvalidOperationException("No prediction checkboxes and comboboxes were found in the plugin form.");
+        }
+
+        return targets;
+    }
+
+    private static Dictionary<PredictionTarget, int> ResolvePredictionSelections(
+        List<PredictionTarget> targets,
+        string predictionScope,
+        string predictionRows,
+        string predictionIndicators,
+        string predictionMethod,
+        string predictionSettings)
+    {
+        var selected = new Dictionary<PredictionTarget, int>();
+        bool hasBulkMethod = !string.IsNullOrWhiteSpace(predictionMethod);
+        bool hasSettings = !string.IsNullOrWhiteSpace(predictionSettings);
+        if (!hasBulkMethod && !hasSettings)
+        {
+            throw new ArgumentException("Pass -PredictionMethod for bulk setting, or -PredictionSettings for explicit setting.");
+        }
+
+        if (hasBulkMethod)
+        {
+            int methodIndex = ResolvePredictionMethodIndex(predictionMethod);
+            HashSet<string> scopes = ParsePredictionScopes(predictionScope);
+            HashSet<int> rows = ParsePredictionRows(predictionRows);
+            HashSet<PredictionTarget> indicatorTargets = ResolvePredictionIndicatorTargets(targets, predictionIndicators);
+            bool hasRowFilter = rows.Count > 0;
+            bool hasIndicatorFilter = indicatorTargets.Count > 0;
+            foreach (PredictionTarget target in targets)
+            {
+                bool selectedByFilter = (!hasRowFilter && !hasIndicatorFilter)
+                    || (hasRowFilter && rows.Contains(target.Row))
+                    || (hasIndicatorFilter && indicatorTargets.Contains(target));
+                if (MatchesPredictionScope(target, scopes) && selectedByFilter)
+                {
+                    selected[target] = methodIndex;
+                }
+            }
+
+            if (selected.Count == 0)
+            {
+                throw new ArgumentException("No prediction indicators matched -PredictionScope/-PredictionRows/-PredictionIndicators.");
+            }
+        }
+
+        if (hasSettings)
+        {
+            foreach (string entry in SplitList(predictionSettings))
+            {
+                int equalIndex = entry.IndexOf('=');
+                if (equalIndex <= 0 || equalIndex == entry.Length - 1)
+                {
+                    throw new ArgumentException("Prediction setting must be key=method: " + entry);
+                }
+
+                string key = entry.Substring(0, equalIndex).Trim();
+                string method = entry.Substring(equalIndex + 1).Trim();
+                PredictionTarget target = ResolvePredictionTarget(targets, key);
+                selected[target] = ResolvePredictionMethodIndex(method);
+            }
+        }
+
+        return selected;
+    }
+
+    private static HashSet<string> ParsePredictionScopes(string predictionScope)
+    {
+        var scopes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string scope in SplitList(string.IsNullOrWhiteSpace(predictionScope) ? "all" : predictionScope))
+        {
+            scopes.Add(NormalizePredictionToken(scope));
+        }
+
+        if (scopes.Count == 0)
+        {
+            scopes.Add("all");
+        }
+
+        return scopes;
+    }
+
+    private static HashSet<int> ParsePredictionRows(string predictionRows)
+    {
+        var rows = new HashSet<int>();
+        foreach (string rowText in SplitList(predictionRows))
+        {
+            int row;
+            if (!int.TryParse(rowText, NumberStyles.Integer, CultureInfo.InvariantCulture, out row))
+            {
+                throw new ArgumentException("Prediction row must be an integer: " + rowText);
+            }
+
+            rows.Add(row);
+        }
+
+        return rows;
+    }
+
+    private static HashSet<PredictionTarget> ResolvePredictionIndicatorTargets(
+        List<PredictionTarget> targets,
+        string predictionIndicators)
+    {
+        var selected = new HashSet<PredictionTarget>();
+        foreach (string indicator in SplitList(predictionIndicators))
+        {
+            selected.Add(ResolvePredictionTarget(targets, indicator));
+        }
+
+        return selected;
+    }
+
+    private static IEnumerable<string> SplitList(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            yield break;
+        }
+
+        string[] parts = value.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
+        foreach (string part in parts)
+        {
+            string trimmed = part.Trim();
+            if (trimmed.Length > 0)
+            {
+                yield return trimmed;
+            }
+        }
+    }
+
+    private static bool MatchesPredictionScope(PredictionTarget target, HashSet<string> scopes)
+    {
+        if (scopes.Contains("all"))
+        {
+            return true;
+        }
+
+        return scopes.Contains(target.Scope)
+            || scopes.Contains(target.NormalizedPrefix);
+    }
+
+    private static PredictionTarget ResolvePredictionTarget(List<PredictionTarget> targets, string key)
+    {
+        string normalizedKey = NormalizePredictionToken(key);
+        var matches = new List<PredictionTarget>();
+        foreach (PredictionTarget target in targets)
+        {
+            if (string.Equals(normalizedKey, NormalizePredictionToken(target.ComboName), StringComparison.OrdinalIgnoreCase))
+            {
+                return target;
+            }
+
+            if (string.Equals(normalizedKey, target.Scope + target.Row.ToString(CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedKey, target.Scope + ":" + target.Row.ToString(CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedKey, target.NormalizedPrefix + target.Row.ToString(CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedKey, target.NormalizedPrefix + ":" + target.Row.ToString(CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase))
+            {
+                matches.Add(target);
+            }
+        }
+
+        if (matches.Count == 1)
+        {
+            return matches[0];
+        }
+
+        if (matches.Count > 1)
+        {
+            throw new ArgumentException("Prediction setting key is ambiguous: " + key);
+        }
+
+        matches = ResolvePredictionTargetsByIndicator(targets, normalizedKey);
+        if (matches.Count == 1)
+        {
+            return matches[0];
+        }
+
+        if (matches.Count > 1)
+        {
+            throw new ArgumentException("Prediction indicator name is ambiguous: " + key);
+        }
+
+        throw new ArgumentException("Prediction setting key not found: " + key);
+    }
+
+    private static List<PredictionTarget> ResolvePredictionTargetsByIndicator(
+        List<PredictionTarget> targets,
+        string normalizedKey)
+    {
+        var matches = new List<PredictionTarget>();
+        foreach (PredictionIndicatorDefinition indicator in PredictionIndicators)
+        {
+            if (!indicator.Matches(normalizedKey))
+            {
+                continue;
+            }
+
+            PredictionTarget target = FindPredictionTarget(targets, indicator.Scope, indicator.Row);
+            if (target != null && !matches.Contains(target))
+            {
+                matches.Add(target);
+            }
+        }
+
+        return matches;
+    }
+
+    private static PredictionTarget FindPredictionTarget(
+        List<PredictionTarget> targets,
+        string scope,
+        int row)
+    {
+        foreach (PredictionTarget target in targets)
+        {
+            if (string.Equals(target.Scope, scope, StringComparison.OrdinalIgnoreCase)
+                && target.Row == row)
+            {
+                return target;
+            }
+        }
+
+        return null;
+    }
+
+    private static string ResolvePredictionIndicatorName(string scope, int row)
+    {
+        foreach (PredictionIndicatorDefinition indicator in PredictionIndicators)
+        {
+            if (string.Equals(indicator.Scope, scope, StringComparison.OrdinalIgnoreCase)
+                && indicator.Row == row)
+            {
+                return indicator.Name;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private static bool TryParsePredictionCheckBoxName(string name, out string prefix, out int row)
+    {
+        prefix = string.Empty;
+        row = 0;
+
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return false;
+        }
+
+        int underscore = name.LastIndexOf('_');
+        if (underscore <= 3 || underscore == name.Length - 1)
+        {
+            return false;
+        }
+
+        if (!int.TryParse(name.Substring(underscore + 1), NumberStyles.Integer, CultureInfo.InvariantCulture, out row))
+        {
+            return false;
+        }
+
+        string head = name.Substring(0, underscore);
+        if (head.EndsWith("ckb", StringComparison.OrdinalIgnoreCase))
+        {
+            prefix = head.Substring(0, head.Length - 3);
+            return prefix.Length > 0;
+        }
+
+        return false;
+    }
+
+    private static int ResolvePredictionMethodIndex(string method)
+    {
+        string token = NormalizePredictionToken(method);
+        switch (token)
+        {
+            case "0":
+            case "latest":
+            case "latest1":
+            case "last":
+            case "last1":
+            case "recent1":
+                return 0;
+            case "1":
+            case "avg2":
+            case "average2":
+            case "arithmetic2":
+                return 1;
+            case "2":
+            case "avg3":
+            case "average3":
+            case "arithmetic3":
+                return 2;
+            case "3":
+            case "weighted2":
+            case "wavg2":
+            case "weightedavg2":
+                return 3;
+            case "4":
+            case "weighted3":
+            case "wavg3":
+            case "weightedavg3":
+                return 4;
+            case "5":
+            case "custom":
+            case "manual":
+            case "user":
+                return 5;
+            case "6":
+            case "zero":
+            case "tozero":
+                return 6;
+            default:
+                throw new ArgumentException("Unsupported prediction method '" + method
+                    + "'. Supported: latest1, avg2, avg3, weighted2, weighted3, custom, zero, or indexes 0-6.");
+        }
+    }
+
+    private static string PredictionMethodName(int methodIndex)
+    {
+        switch (methodIndex)
+        {
+            case 0: return "latest1";
+            case 1: return "avg2";
+            case 2: return "avg3";
+            case 3: return "weighted2";
+            case 4: return "weighted3";
+            case 5: return "custom";
+            case 6: return "zero";
+            default: return methodIndex.ToString(CultureInfo.InvariantCulture);
+        }
+    }
+
+    private static string NormalizePredictionToken(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var builder = new StringBuilder(value.Length);
+        foreach (char ch in value.Trim())
+        {
+            if (char.IsLetterOrDigit(ch))
+            {
+                builder.Append(char.ToLowerInvariant(ch));
+            }
+        }
+
+        return builder.ToString();
+    }
+
+    private static string PredictionScopeFromPrefix(string prefix)
+    {
+        string normalized = NormalizePredictionToken(prefix);
+        if (normalized.EndsWith("sales", StringComparison.Ordinal))
+        {
+            return "sales";
+        }
+        if (normalized.EndsWith("capital", StringComparison.Ordinal))
+        {
+            return "capital";
+        }
+        if (normalized.EndsWith("investment", StringComparison.Ordinal))
+        {
+            return "investment";
+        }
+        if (normalized.EndsWith("assume", StringComparison.Ordinal))
+        {
+            return "assume";
+        }
+
+        return normalized;
+    }
+
+    private static string ResolvePredictionSheetName(PredictionTarget target)
+    {
+        switch (target.Scope)
+        {
+            case "sales":
+                return "\u9500\u552e\u9884\u6d4b";
+            case "capital":
+                return "\u8d44\u4ea7\u9884\u6d4b";
+            case "investment":
+                return "\u6295\u8d44\u4e0e\u51cf\u503c";
+            case "assume":
+                return "\u5047\u8bbe";
+            default:
+                throw new ArgumentException("Cannot map prediction scope to sheet: " + target.Scope);
         }
     }
 
@@ -1620,6 +2271,71 @@ public static class SinitekCliBridge
         public string Gsdms { get; private set; }
         public string Source { get; private set; }
         public int Count { get; private set; }
+    }
+
+    private sealed class PredictionTarget
+    {
+        public PredictionTarget(
+            string prefix,
+            string scope,
+            int row,
+            string comboName,
+            string indicatorName)
+        {
+            NormalizedPrefix = NormalizePredictionToken(prefix);
+            Scope = scope;
+            Row = row;
+            ComboName = comboName;
+            IndicatorName = indicatorName ?? string.Empty;
+        }
+
+        public string NormalizedPrefix { get; private set; }
+        public string Scope { get; private set; }
+        public int Row { get; private set; }
+        public string ComboName { get; private set; }
+        public string IndicatorName { get; private set; }
+    }
+
+    private sealed class PredictionIndicatorDefinition
+    {
+        private readonly string[] normalizedAliases;
+
+        public PredictionIndicatorDefinition(string scope, int row, string name, params string[] aliases)
+        {
+            Scope = scope;
+            Row = row;
+            Name = name;
+
+            var values = new List<string>();
+            values.Add(name);
+            if (aliases != null)
+            {
+                values.AddRange(aliases);
+            }
+
+            normalizedAliases = new string[values.Count];
+            for (int i = 0; i < values.Count; i++)
+            {
+                normalizedAliases[i] = NormalizePredictionToken(values[i]);
+            }
+        }
+
+        public string Scope { get; private set; }
+        public int Row { get; private set; }
+        public string Name { get; private set; }
+
+        public bool Matches(string normalizedKey)
+        {
+            foreach (string alias in normalizedAliases)
+            {
+                if (string.Equals(normalizedKey, alias, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 
     private sealed class ExcelSession : IDisposable

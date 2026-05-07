@@ -50,5 +50,24 @@ defaults:
   # 同一主公司复用模型现有 PeerStock；切换主公司时从携宁云接口自动获取推荐可比公司。
   peer_stock: ""
 
+  # predict action 的批量应用范围：all/sales/capital/investment/assume。
+  # 留空或 all 表示当前预测设置表单内所有指标。
+  prediction_scope: "all"
+
+  # predict action 的批量应用行号，逗号分隔；留空表示所选范围内全部行。
+  prediction_rows: ""
+
+  # predict action 的批量应用指标名，逗号/分号分隔；可与 prediction_scope 一起限定范围。
+  # 示例：研发费用率,所得税税率,应收账款周转天数。
+  prediction_indicators: ""
+
+  # predict action 的批量方法。留空时需通过命令行传 -PredictionMethod 或 -PredictionSettings。
+  # 可选值：latest1、avg2、avg3、weighted2、weighted3、custom、zero，或插件下拉框索引 0-6。
+  prediction_method: ""
+
+  # predict action 的精确设置，逗号/分号分隔，例如：
+  # 研发费用率=avg3,所得税税率=weighted2,应收账款周转天数=zero
+  prediction_settings: ""
+
   # CLI 单次执行的总超时秒数。默认 300 秒；设为 0 可关闭总超时监督。
   timeout_seconds: 300

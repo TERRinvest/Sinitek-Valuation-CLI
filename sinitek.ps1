@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('inspect', 'login', 'output', 'update', 'produce')]
+    [ValidateSet('inspect', 'login', 'output', 'update', 'produce', 'predict')]
     [string]$Action = 'inspect',
 
     [string]$Config = '.\sinitek.yaml',
@@ -21,6 +21,11 @@ param(
     [string]$CompanyManagementType = '2',
     [string]$CompanyManagementName = '',
     [string]$PeerStock = '',
+    [string]$PredictionScope = 'all',
+    [string]$PredictionRows = '',
+    [string]$PredictionIndicators = '',
+    [string]$PredictionMethod = '',
+    [string]$PredictionSettings = '',
     [bool]$UpdateDirectory = $true,
     [bool]$UpdateSrcData = $true,
     [bool]$Migrate = $false,
@@ -261,23 +266,6 @@ function Set-FromConfig {
         $Value = Resolve-OptionalPath -Path ([string]$Value) -BasePath $PathBase
     }
     Set-Variable -Name $VariableName -Value $Value -Scope 1
-}
-
-function Set-FromNestedConfig {
-    param(
-        [hashtable]$ConfigData,
-        [string]$Section,
-        [string]$ConfigKey,
-        [string]$VariableName,
-        [string]$ExplicitName = $VariableName
-    )
-    if (Test-ExplicitParam $ExplicitName) {
-        return
-    }
-    if (-not $ConfigData.ContainsKey($Section) -or -not $ConfigData[$Section].ContainsKey($ConfigKey)) {
-        return
-    }
-    Set-Variable -Name $VariableName -Value $ConfigData[$Section][$ConfigKey] -Scope 1
 }
 
 function Set-FromDefaultConfig {
@@ -562,6 +550,11 @@ if (-not [string]::IsNullOrWhiteSpace($ConfigPath) -and (Test-Path -LiteralPath 
     Set-FromDefaultConfig -ConfigData $ConfigData -ConfigKey 'company_management_type' -VariableName 'CompanyManagementType'
     Set-FromDefaultConfig -ConfigData $ConfigData -ConfigKey 'company_management_name' -VariableName 'CompanyManagementName'
     Set-FromDefaultConfig -ConfigData $ConfigData -ConfigKey 'peer_stock' -VariableName 'PeerStock'
+    Set-FromDefaultConfig -ConfigData $ConfigData -ConfigKey 'prediction_scope' -VariableName 'PredictionScope'
+    Set-FromDefaultConfig -ConfigData $ConfigData -ConfigKey 'prediction_rows' -VariableName 'PredictionRows'
+    Set-FromDefaultConfig -ConfigData $ConfigData -ConfigKey 'prediction_indicators' -VariableName 'PredictionIndicators'
+    Set-FromDefaultConfig -ConfigData $ConfigData -ConfigKey 'prediction_method' -VariableName 'PredictionMethod'
+    Set-FromDefaultConfig -ConfigData $ConfigData -ConfigKey 'prediction_settings' -VariableName 'PredictionSettings'
     Set-FromDefaultConfig -ConfigData $ConfigData -ConfigKey 'timeout_seconds' -VariableName 'TimeoutSeconds'
 
     if (-not (Test-ExplicitParam 'Username') -and $ConfigData.ContainsKey('auth') -and $ConfigData['auth'].ContainsKey('username_env')) {
@@ -662,16 +655,25 @@ Add-Type -Path $BridgePath -ReferencedAssemblies $References
 
 $WorkbookPath = if ($Workbook) { (Resolve-Path -LiteralPath $Workbook).Path } else { '' }
 
-$MutatingActions = @('output', 'update', 'produce')
+$MutatingActions = @('output', 'update', 'produce', 'predict')
 if ($MutatingActions -contains $Action) {
     if (-not $Save.IsPresent -and [string]::IsNullOrWhiteSpace($OutWorkbook) -and -not [string]::IsNullOrWhiteSpace($OutputDir)) {
         $OutputBasePath = if (Test-ExplicitParam 'OutputDir') { (Get-Location).Path } else { $ConfigBase }
         $OutputBase = Resolve-OptionalPath -Path $OutputDir -BasePath $OutputBasePath
         $WorkbookName = if ($WorkbookPath) { [IO.Path]::GetFileNameWithoutExtension($WorkbookPath) } else { 'workbook' }
         $ActionName = Format-ActionForFileName $Action
-        $StockSegment = Get-StockCodeForFileName -StockCode $Stock -WorkbookPath $WorkbookPath
+        $StockSegment = ''
+        try {
+            $StockSegment = Get-StockCodeForFileName -StockCode $Stock -WorkbookPath $WorkbookPath
+        }
+        catch {
+            if ($Action -ne 'predict') {
+                throw
+            }
+        }
+        $StockPart = if ([string]::IsNullOrWhiteSpace($StockSegment)) { '' } else { "-$StockSegment" }
         $Timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-        $OutWorkbook = Join-Path $OutputBase "$WorkbookName-$ActionName-$StockSegment-$Timestamp.xlsx"
+        $OutWorkbook = Join-Path $OutputBase "$WorkbookName-$ActionName$StockPart-$Timestamp.xlsx"
     }
     if (-not $Save.IsPresent -and [string]::IsNullOrWhiteSpace($OutWorkbook)) {
         throw "Mutating action '$Action' requires -OutWorkbook, -OutputDir, or -Save."
@@ -697,6 +699,34 @@ try {
                 $Username,
                 $Password
             )
+        }
+        'predict' {
+            $Result = [SinitekCliBridge]::PredictionSettingsDirect(
+                $WorkbookPath,
+                $OutWorkbook,
+                $Save.IsPresent,
+                $Visible.IsPresent,
+                $PredictionScope,
+                $PredictionRows,
+                $PredictionIndicators,
+                $PredictionMethod,
+                $PredictionSettings
+            )
+            $Artifact = if (-not [string]::IsNullOrWhiteSpace($OutWorkbook)) {
+                $OutWorkbook
+            }
+            elseif ($Save.IsPresent) {
+                $WorkbookPath
+            }
+            else {
+                ''
+            }
+            if (-not [string]::IsNullOrWhiteSpace($Artifact)) {
+                $Result + [Environment]::NewLine + "Artifact=" + $Artifact
+            }
+            else {
+                $Result
+            }
         }
         'update' {
             [SinitekCliBridge]::UpdateDirect(

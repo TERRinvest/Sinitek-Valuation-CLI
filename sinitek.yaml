@@ -15,4 +15,9 @@ defaults:
   add_output: false
   company_management_type: "2"
   peer_stock: ""
+  prediction_scope: "all"
+  prediction_rows: ""
+  prediction_indicators: ""
+  prediction_method: ""
+  prediction_settings: ""
   timeout_seconds: 300
