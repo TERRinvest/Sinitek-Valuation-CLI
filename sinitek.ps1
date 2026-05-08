@@ -491,9 +491,25 @@ function Invoke-WithTimeoutSupervisor {
 
         if ($Process.WaitForExit($TimeoutSeconds * 1000)) {
             $Process.WaitForExit()
+            $ExitCode = $Process.ExitCode
+            $StderrText = ''
+            try {
+                if (Test-Path -LiteralPath $StderrPath) {
+                    $StderrText = [IO.File]::ReadAllText($StderrPath, [Text.Encoding]::UTF8)
+                }
+            }
+            catch {
+                $StderrText = ''
+            }
             Write-RedirectedFile -Path $StdoutPath
             Write-RedirectedFile -Path $StderrPath -ErrorStream
-            exit $Process.ExitCode
+            if (($null -eq $ExitCode -or $ExitCode -eq 0) -and $StderrText -match '(?m)^ERROR:') {
+                $ExitCode = 1
+            }
+            if ($null -eq $ExitCode) {
+                $ExitCode = 1
+            }
+            exit $ExitCode
         }
 
         $ExcelProcessIds = Read-ExcelPidFile -Path $ChildExcelPidFile
