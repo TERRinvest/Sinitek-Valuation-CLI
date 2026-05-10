@@ -1,4 +1,4 @@
-# Sinitek CLI Bridge
+# Sinitek Valuation CLI
 
 这个项目把 Excel 里的"携宁云估值"插件能力包装成命令行入口，避免在 Excel GUI 里手工点按钮。主入口是 `sinitek.ps1`，直接在 Windows PowerShell 中运行。
 
