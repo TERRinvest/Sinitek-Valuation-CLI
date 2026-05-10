@@ -46,7 +46,13 @@ $env:SINITEK_PASSWORD = "your-password"
 
 ### 免执行策略快捷方式
 
-如果不想执行 `Set-ExecutionPolicy`，也可以通过 `sinitek.cmd` 调用（内部带 `-ExecutionPolicy Bypass`），或在命令中显式指定：
+如果不想执行 `Set-ExecutionPolicy`，也可以通过 `sinitek.cmd` 调用（内部带 `-ExecutionPolicy Bypass`）：
+
+```cmd
+sinitek.cmd -Action produce -Stock 600519
+```
+
+或在 PowerShell 命令中显式指定：
 
 ```powershell
 powershell.exe -ExecutionPolicy Bypass -File .\sinitek.ps1 -Action produce -Stock 600519
@@ -164,7 +170,7 @@ defaults:
   update_src_data: true
   migrate: false
   add_output: false
-  company_management_type: "2"
+  segment_dimension: "product"
   peer_stock: ""
   prediction_scope: "all"
   prediction_rows: ""
@@ -188,7 +194,7 @@ defaults:
 | `update_src_data` | `update` 是否更新财务源数据、附注、经营数据、可比分析等。 |
 | `migrate` | 是否执行历史数据迁移。 |
 | `add_output` | 更新完成后是否顺带生成 output sheet。 |
-| `company_management_type` | 公司经营数据口径，当前默认 `"2"`。 |
+| `segment_dimension` | 业务分部口径，决定"公司经营数据"sheet 按哪种维度拆分业务板块。可选值：`"industry"`、`"product"`（默认）、`"region"`。详见下方小节。 |
 | `peer_stock` | 可比公司 GSDM 列表，逗号分隔；留空时复刻插件逻辑自动选择。 |
 | `prediction_scope` | `predict` 的批量范围，支持 `all`、`sales`、`capital`。 |
 | `prediction_rows` | `predict` 的批量行号筛选，逗号/分号分隔。 |
@@ -198,6 +204,33 @@ defaults:
 | `timeout_seconds` | CLI 单次执行的总超时秒数，默认 300；设为 `0` 可关闭总超时监督。 |
 
 YAML 解析器只支持当前这种简单结构：顶层字段和一层嵌套字段，缩进使用两个空格。
+
+### 业务分部口径（segment_dimension）
+
+`segment_dimension` 决定"公司经营数据"sheet 按哪种维度拆分业务板块。
+
+| 可选值 | 分部维度 | 说明 |
+| --- | --- | --- |
+| `"industry"` | 按行业 | 分部数据写入年度列（Q/S 等奇数列），如"消费级"、"企业级"。适用于公司按行业分类披露经营数据的场景。 |
+| `"product"` | 按产品 | 分部数据仅写入半年度列（L 列），如"芯片"、"算法"。适用于公司按产品线分类披露的场景。**当前默认值。** |
+| `"region"` | 按地区 | 分部数据按地区维度拆分，如"华东"、"华南"、"海外"。适用于以地域为主要经营维度的公司。 |
+
+CLI 内部会将英文值映射为插件所需的 `CompanyManagementType` 数字（industry=1, product=2, region=3）和 `CompanyManagementName` 中文字符串（按行业/按产品/按地区）。
+
+命令行覆盖：
+
+```powershell
+.\sinitek.ps1 -Action produce -Stock 688343 -SegmentDimension industry
+```
+
+也可以在 YAML 中配置默认值：
+
+```yaml
+defaults:
+  segment_dimension: "industry"
+```
+
+**选择建议**：与目标公司年报中"报告分部"披露口径保持一致。如果年报按行业分部披露（如云天励飞），使用 `industry`；如果按产品分部披露，使用 `product`；如果按地区分部披露，使用 `region`。
 
 ### 货币单位
 
