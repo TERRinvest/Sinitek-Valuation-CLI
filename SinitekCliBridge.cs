@@ -170,8 +170,7 @@ public static class SinitekCliBridge
         int historyYear,
         int forecastYear,
         string currencyUnit,
-        string companyManagementType,
-        string companyManagementName,
+        string segmentDimension,
         string peerStock,
         bool updateDirectory,
         bool updateSrcData,
@@ -205,8 +204,21 @@ public static class SinitekCliBridge
             SetDocProperty("HistoryYear", historyYear.ToString(CultureInfo.InvariantCulture));
             SetDocProperty("ForecastYear", forecastYear.ToString(CultureInfo.InvariantCulture));
             SetDocProperty("CurrencyUnit", currency.ScaleText);
-            SetDocProperty("CompanyManagementName", string.IsNullOrWhiteSpace(companyManagementName) ? "\u6309\u4ea7\u54c1" : companyManagementName);
-            SetDocProperty("CompanyManagementType", companyManagementType);
+            var dimensionToPlugin = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+            dimensionToPlugin.Add("industry", new[] { "1", "\u6309\u884c\u4e1a" });
+            dimensionToPlugin.Add("product",  new[] { "2", "\u6309\u4ea7\u54c1" });
+            dimensionToPlugin.Add("region",   new[] { "3", "\u6309\u5730\u533a" });
+            if (string.IsNullOrWhiteSpace(segmentDimension))
+            {
+                segmentDimension = "product";
+            }
+            string[] mapped;
+            if (!dimensionToPlugin.TryGetValue(segmentDimension, out mapped))
+            {
+                mapped = dimensionToPlugin["product"];
+            }
+            SetDocProperty("CompanyManagementType", mapped[0]);
+            SetDocProperty("CompanyManagementName", mapped[1]);
             SetDocProperty("PeerStock", peerSelection.Gsdms);
             SetDocProperty("UpdateDirectory", updateDirectory.ToString(CultureInfo.InvariantCulture));
             SetDocProperty("UpdateSrcData", updateSrcData.ToString(CultureInfo.InvariantCulture));

@@ -13,7 +13,7 @@ defaults:
   update_src_data: true
   migrate: false
   add_output: false
-  company_management_type: "2"
+  segment_dimension: "product"
   peer_stock: ""
   prediction_scope: "all"
   prediction_rows: ""

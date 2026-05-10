@@ -44,7 +44,7 @@ defaults:
 
   # 公司经营数据口径：传给插件 CompanyManagementType，用于更新“公司经营数据”表。
   # 映射关系：1=按行业，2=按产品，3=按地区。当前默认 "2" 即按产品。
-  company_management_type: "2"
+  segment_dimension: "product"
 
   # 可比公司 GSDM 列表，逗号分隔。留空时 CLI 会复刻插件逻辑：
   # 同一主公司复用模型现有 PeerStock；切换主公司时从携宁云接口自动获取推荐可比公司。

@@ -18,8 +18,7 @@ param(
     [int]$HistoryYear = 5,
     [int]$ForecastYear = 5,
     [string]$CurrencyUnit = '0.000001',
-    [string]$CompanyManagementType = '2',
-    [string]$CompanyManagementName = '',
+    [string]$SegmentDimension = 'product',
     [string]$PeerStock = '',
     [string]$PredictionScope = 'all',
     [string]$PredictionRows = '',
@@ -567,8 +566,7 @@ if (-not [string]::IsNullOrWhiteSpace($ConfigPath) -and (Test-Path -LiteralPath 
     Set-FromDefaultConfig -ConfigData $ConfigData -ConfigKey 'update_src_data' -VariableName 'UpdateSrcData'
     Set-FromDefaultConfig -ConfigData $ConfigData -ConfigKey 'migrate' -VariableName 'Migrate'
     Set-FromDefaultConfig -ConfigData $ConfigData -ConfigKey 'add_output' -VariableName 'AddOutput'
-    Set-FromDefaultConfig -ConfigData $ConfigData -ConfigKey 'company_management_type' -VariableName 'CompanyManagementType'
-    Set-FromDefaultConfig -ConfigData $ConfigData -ConfigKey 'company_management_name' -VariableName 'CompanyManagementName'
+    Set-FromDefaultConfig -ConfigData $ConfigData -ConfigKey 'segment_dimension' -VariableName 'SegmentDimension'
     Set-FromDefaultConfig -ConfigData $ConfigData -ConfigKey 'peer_stock' -VariableName 'PeerStock'
     Set-FromDefaultConfig -ConfigData $ConfigData -ConfigKey 'prediction_scope' -VariableName 'PredictionScope'
     Set-FromDefaultConfig -ConfigData $ConfigData -ConfigKey 'prediction_rows' -VariableName 'PredictionRows'
@@ -760,8 +758,7 @@ try {
                 $HistoryYear,
                 $ForecastYear,
                 $CurrencyUnit,
-                $CompanyManagementType,
-                $CompanyManagementName,
+                $SegmentDimension,
                 $PeerStock,
                 $UpdateDirectory,
                 $UpdateSrcData,
@@ -783,8 +780,7 @@ try {
                 $HistoryYear,
                 $ForecastYear,
                 $CurrencyUnit,
-                $CompanyManagementType,
-                $CompanyManagementName,
+                $SegmentDimension,
                 $PeerStock,
                 $UpdateDirectory,
                 $UpdateSrcData,
