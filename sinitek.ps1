@@ -101,6 +101,10 @@ function Resolve-OptionalPath {
     if ([string]::IsNullOrWhiteSpace($Path)) {
         return ''
     }
+    $Path = $Path.Trim().Trim('"').Trim("'")
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return ''
+    }
     if ([IO.Path]::IsPathRooted($Path)) {
         return [IO.Path]::GetFullPath($Path)
     }

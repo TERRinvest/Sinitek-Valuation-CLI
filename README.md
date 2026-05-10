@@ -1,12 +1,22 @@
 # Sinitek CLI Bridge
 
-这个项目把 Excel 里的“携宁云估值”插件能力包装成命令行入口，避免在 Excel GUI 里手工点按钮。主实现统一走 `sinitek.ps1`，外层保留 `sinitek.cmd` 和 `sinitek.sh` 适配不同 shell。
+这个项目把 Excel 里的"携宁云估值"插件能力包装成命令行入口，避免在 Excel GUI 里手工点按钮。主入口是 `sinitek.ps1`，直接在 Windows PowerShell 中运行。
 
-注意：这是 Windows-only 工具。Excel COM 和携宁插件必须运行在 Windows 侧；Git Bash/WSL 只能作为命令入口，不能作为原生 Linux 运行环境。
+注意：这是 Windows-only 工具。Excel COM 和携宁插件必须运行在 Windows 侧。
 
 ## 快速开始
 
-首次运行前需要先提供携宁云账号和密码。推荐在当前 PowerShell 会话中设置环境变量：
+### 1. 放行 PowerShell 执行策略（一次性）
+
+Windows 默认禁止运行 `.ps1` 脚本。在 PowerShell 中执行：
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+### 2. 配置账号密码
+
+推荐在当前 PowerShell 会话中设置环境变量：
 
 ```powershell
 $env:SINITEK_USERNAME = "your.name@domainname.com"
@@ -20,10 +30,12 @@ $env:SINITEK_PASSWORD = "your-password"
 [Environment]::SetEnvironmentVariable("SINITEK_PASSWORD", "your-password", "User")
 ```
 
+### 3. 运行
+
 一键提取股票历史数据并另存为新的估值模型：
 
 ```powershell
-.\sinitek.cmd -Action produce -Stock 600519
+.\sinitek.ps1 -Action produce -Stock 600519
 ```
 
 上面的命令会打开默认模型模板，按配置中的账号和参数从携宁云提取 `600519` 的历史数据，更新模型、生成 output sheet，并自动另存为新的模型文件。`-Stock` 可替换为目标股票代码，命令成功时会回显 `Artifact=<xlsx路径>`，便于找到生成的文件。
@@ -32,14 +44,23 @@ $env:SINITEK_PASSWORD = "your-password"
 
 敲入命令到生成文件大约需要50s。
 
+### 免执行策略快捷方式
+
+如果不想执行 `Set-ExecutionPolicy`，也可以通过 `sinitek.cmd` 调用（内部带 `-ExecutionPolicy Bypass`），或在命令中显式指定：
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File .\sinitek.ps1 -Action produce -Stock 600519
+```
+
+> **注意**：不建议通过 `cmd /c` 调用 `sinitek.cmd` 传递含引号的参数（如 `-Workbook`），cmd.exe 的嵌套引号解析有固有限制。直接在 PowerShell 中调用 `sinitek.ps1` 可避免此问题。
+
 ## 运行环境
 
 - Windows + Microsoft Excel，支持 COM 自动化。
 - 已安装携宁云估值 Excel 插件，默认路径为 `C:\Sinitek\SinitekExcelAddin`。
 - 插件目录中需要存在 `SinitekExcel.dll` 和 `Newtonsoft.Json.dll`。
 - 当前目录中需要有估值模型模板，例如 `Sinitek_Model_Ashare_V12.xlsx`。
-- 推荐在 cmd、Windows PowerShell 5.1 或 PowerShell 7 中运行。PowerShell 7 会自动转发到 Windows PowerShell 5.1。
-- 不支持在原生 Linux 中运行 Excel COM。`sinitek.sh` 只是从 bash 调用 Windows 的 `powershell.exe`。
+- 推荐在 Windows PowerShell 5.1 或 PowerShell 7 中运行。PowerShell 7 会自动转发到 Windows PowerShell 5.1。
 
 ## 依赖项
 
@@ -57,8 +78,6 @@ $env:SINITEK_PASSWORD = "your-password"
 | 模型文件 | 携宁云估值 xlsx 模板 | 必需。需要包含 `ModelVersion`、`ModelType` 等自定义文档属性。 |
 | 账号 | 携宁云账号和密码 | 必需。建议通过 `SINITEK_USERNAME`、`SINITEK_PASSWORD` 环境变量提供。 |
 | 网络 | `https://cloudmodel.sinitek.com` | 必需。股票搜索、权限校验、数据更新会访问携宁云接口。 |
-| Shell | `cmd.exe` | 可选。使用 `sinitek.cmd` 时需要。 |
-| Shell | Git Bash / WSL bash | 可选。使用 `sinitek.sh` 时需要，但仍调用 Windows `powershell.exe`。 |
 
 不需要安装 Node.js、Python、Visual Studio 或额外包管理器。C# bridge 由 PowerShell 的 `Add-Type` 在运行时编译。
 
@@ -84,8 +103,7 @@ C:\Windows\assembly\GAC\Extensibility\7.0.3300.0__b03f5f7f11d50a3a\extensibility
 | --- | --- |
 | `sinitek.ps1` | 主入口，读取 YAML、加载插件 DLL、调用 C# bridge。 |
 | `SinitekCliBridge.cs` | C# 桥接层，负责 Excel COM、插件调用、股票搜索和文件保存。 |
-| `sinitek.cmd` | Windows 推荐入口，cmd、PowerShell、pwsh 都可以调用。 |
-| `sinitek.sh` | Git Bash/WSL 风格入口，内部仍调用 Windows 的 `powershell.exe`。 |
+| `sinitek.cmd` | 免执行策略快捷方式，内部调用 `sinitek.ps1` 并带 `-ExecutionPolicy Bypass`。 |
 | `sinitek.yaml` | 本机默认配置。 |
 | `sinitek.yaml.example` | 配置样例，可复制后修改。 |
 | `Sinitek_Model_Ashare_V12.xlsx` | 当前估值模型模板。 |
@@ -123,7 +141,7 @@ $env:SINITEK_PASSWORD = "your-password"
 如果不想设置环境变量，也可以临时传参：
 
 ```powershell
-.\sinitek.cmd -Action login -Username "your.name@domainname.com" -Password "your-password"
+.\sinitek.ps1 -Action login -Username "your.name@domainname.com" -Password "your-password"
 ```
 
 注意：CLI 每次执行都是新进程，`login` action 主要用于校验账号密码，不等于后续命令已经登录。实际执行需要每次能从环境变量或命令参数拿到账号密码。
@@ -163,9 +181,9 @@ defaults:
 | `auth.username_env` | 用户名所在环境变量名；生成 output sheet 时会从该用户名的邮箱域名自动提取输出表后缀。 |
 | `auth.password_env` | 密码所在环境变量名。 |
 | `defaults` | 命令行未显式传参时使用的本机默认配置。旧版 `fallback` 仍兼容，但新配置推荐使用 `defaults`。 |
-| `history_year` | 更新模型时的历史年数。CLI 会同步写入“目录”页 `D3`。作为默认值，仅在命令行未传 `-HistoryYear` 时生效。 |
-| `forecast_year` | 更新模型时的预测年数。CLI 会同步写入“目录”页 `D4` 并由模型公式更新 `D7`。作为默认值，仅在命令行未传 `-ForecastYear` 时生效。 |
-| `currency_unit` | 货币单位倍率。CLI 会同步写入“目录”页的单位单元格，使报表显示和公式缩放生效。当前示例默认 `0.000001`，即百万元。 |
+| `history_year` | 更新模型时的历史年数。CLI 会同步写入"目录"页 `D3`。作为默认值，仅在命令行未传 `-HistoryYear` 时生效。 |
+| `forecast_year` | 更新模型时的预测年数。CLI 会同步写入"目录"页 `D4` 并由模型公式更新 `D7`。作为默认值，仅在命令行未传 `-ForecastYear` 时生效。 |
+| `currency_unit` | 货币单位倍率。CLI 会同步写入"目录"页的单位单元格，使报表显示和公式缩放生效。当前示例默认 `0.000001`，即百万元。 |
 | `update_directory` | `update` 是否更新目录。 |
 | `update_src_data` | `update` 是否更新财务源数据、附注、经营数据、可比分析等。 |
 | `migrate` | 是否执行历史数据迁移。 |
@@ -183,7 +201,7 @@ YAML 解析器只支持当前这种简单结构：顶层字段和一层嵌套字
 
 ### 货币单位
 
-`currency_unit` 支持以下值。CLI 会按插件原“货币单位”下拉框的逻辑，同步写入“目录”页 `D2`、`D5`、`D6`，因此后续报表中引用 `目录!D5` / `目录!D6` 的显示单位和缩放公式会一起变化。
+`currency_unit` 支持以下值。CLI 会按插件原"货币单位"下拉框的逻辑，同步写入"目录"页 `D2`、`D5`、`D6`，因此后续报表中引用 `目录!D5` / `目录!D6` 的显示单位和缩放公式会一起变化。
 
 | `currency_unit` | 货币单位 | 股数单位 |
 | --- | --- | --- |
@@ -196,7 +214,7 @@ YAML 解析器只支持当前这种简单结构：顶层字段和一层嵌套字
 也可以通过命令行临时覆盖：
 
 ```powershell
-.\sinitek.cmd -Action produce -Stock 600519 -CurrencyUnit 1
+.\sinitek.ps1 -Action produce -Stock 600519 -CurrencyUnit 1
 ```
 
 ## 命令
@@ -210,14 +228,14 @@ YAML 解析器只支持当前这种简单结构：顶层字段和一层嵌套字
 | `output` | 生成 output sheet 并保存 | 是 | `-Stock`、`-CurrencyUnit`、`-OutWorkbook` |
 | `update` | 更新模型历史数据和相关表 | 是 | `-Stock`、`-HistoryYear`、`-ForecastYear`、`-PeerStock` |
 | `produce` | 一键更新并生成 output sheet | 是 | `-Stock`、`-CurrencyUnit`、`-TimeoutSeconds` |
-| `predict` | 执行“预测数据设置” | 是 | `-PredictionMethod`、`-PredictionIndicators`、`-PredictionSettings` |
+| `predict` | 执行"预测数据设置" | 是 | `-PredictionMethod`、`-PredictionIndicators`、`-PredictionSettings` |
 
 ### inspect
 
 检查当前 workbook、插件版本、模型版本、登录状态和关键自定义属性：
 
 ```powershell
-.\sinitek.cmd -Action inspect
+.\sinitek.ps1 -Action inspect
 ```
 
 ### login
@@ -225,13 +243,13 @@ YAML 解析器只支持当前这种简单结构：顶层字段和一层嵌套字
 校验账号密码是否可用：
 
 ```powershell
-.\sinitek.cmd -Action login
+.\sinitek.ps1 -Action login
 ```
 
 也可以临时传入账号密码：
 
 ```powershell
-.\sinitek.cmd -Action login -Username "your.name@domainname.com" -Password "your-password"
+.\sinitek.ps1 -Action login -Username "your.name@domainname.com" -Password "your-password"
 ```
 
 `login` 只用于校验；CLI 每次执行都是新进程，后续 `update`、`output`、`produce` 仍需要能从环境变量或命令参数读取账号密码。
@@ -241,13 +259,13 @@ YAML 解析器只支持当前这种简单结构：顶层字段和一层嵌套字
 导出 output sheet 并保存为副本：
 
 ```powershell
-.\sinitek.cmd -Action output -Stock 600519 -OutWorkbook .\output\maotai-output.xlsx
+.\sinitek.ps1 -Action output -Stock 600519 -OutWorkbook .\output\maotai-output.xlsx
 ```
 
 `output` 会在导出前先按 `currency_unit` / `-CurrencyUnit` 同步报表单位。需要临时切换单位时直接传参：
 
 ```powershell
-.\sinitek.cmd -Action output -Stock 600519 -CurrencyUnit 0.0001
+.\sinitek.ps1 -Action output -Stock 600519 -CurrencyUnit 0.0001
 ```
 
 ### update
@@ -255,25 +273,25 @@ YAML 解析器只支持当前这种简单结构：顶层字段和一层嵌套字
 更新模型历史数据、附注、经营数据、可比分析等，并保存副本：
 
 ```powershell
-.\sinitek.cmd -Action update -Stock 600519 -OutWorkbook .\output\maotai-updated.xlsx
+.\sinitek.ps1 -Action update -Stock 600519 -OutWorkbook .\output\maotai-updated.xlsx
 ```
 
 需要临时调整历史年数、预测年数或货币单位时，可以直接覆盖：
 
 ```powershell
-.\sinitek.cmd -Action update -Stock 600519 -HistoryYear 5 -ForecastYear 4 -CurrencyUnit 0.0001
+.\sinitek.ps1 -Action update -Stock 600519 -HistoryYear 5 -ForecastYear 4 -CurrencyUnit 0.0001
 ```
 
 可比公司默认按原插件逻辑处理：如果当前 workbook 已经是同一主公司，继续复用模型现有 `PeerStock`；切换主公司时，用主公司的 `Gsdm` 请求携宁云 `/api/company/analysis/gsdms`，把返回的推荐可比公司 `gsdm` 写入 `PeerStock`。需要手工指定时传逗号分隔的 GSDM：
 
 ```powershell
-.\sinitek.cmd -Action update -Stock 600519 -PeerStock "000858.SZ,000568.SZ,600809.SH"
+.\sinitek.ps1 -Action update -Stock 600519 -PeerStock "000858.SZ,000568.SZ,600809.SH"
 ```
 
 日常推荐在 `sinitek.yaml` 中配置 `output_dir`，然后让 CLI 自动生成输出文件名，避免覆盖历史结果：
 
 ```powershell
-.\sinitek.cmd -Action update -Stock 600519
+.\sinitek.ps1 -Action update -Stock 600519
 ```
 
 ### produce
@@ -281,7 +299,7 @@ YAML 解析器只支持当前这种简单结构：顶层字段和一层嵌套字
 一键输出最终产物：登录校验、更新数据、生成 output sheet、保存副本。
 
 ```powershell
-.\sinitek.cmd -Action produce -Stock 600519
+.\sinitek.ps1 -Action produce -Stock 600519
 ```
 
 `produce` 会强制包含 output sheet，并会按 `currency_unit` / `-CurrencyUnit` 同步报表单位；输出路径遵循 `-OutWorkbook`、`output_dir` 或 `-Save` 的保存规则。命令成功时会回显 `Artifact=<xlsx路径>`，便于后续脚本直接读取产物位置。
@@ -289,37 +307,37 @@ YAML 解析器只支持当前这种简单结构：顶层字段和一层嵌套字
 CLI 默认有 300 秒总超时，覆盖 PowerShell、Excel COM 和插件调用链。需要放宽时可以传 `-TimeoutSeconds`：
 
 ```powershell
-.\sinitek.cmd -Action produce -Stock 600519 -TimeoutSeconds 600
+.\sinitek.ps1 -Action produce -Stock 600519 -TimeoutSeconds 600
 ```
 
 传 `-TimeoutSeconds 0` 可关闭总超时监督。
 
 ### predict
 
-`predict` 对应插件 `btnSet` / “预测数据设置”功能。CLI 会打开模型，写入预测设置自定义属性，并调用插件预测设置表单的公式写入逻辑，不弹 GUI。
+`predict` 对应插件 `btnSet` / "预测数据设置"功能。CLI 会打开模型，写入预测设置自定义属性，并调用插件预测设置表单的公式写入逻辑，不弹 GUI。
 
 按范围批量设置：
 
 ```powershell
-.\sinitek.cmd -Action predict -PredictionScope sales -PredictionMethod avg3 -OutWorkbook .\output\maotai-predict.xlsx
+.\sinitek.ps1 -Action predict -PredictionScope sales -PredictionMethod avg3 -OutWorkbook .\output\maotai-predict.xlsx
 ```
 
 按财务指标名批量设置：
 
 ```powershell
-.\sinitek.cmd -Action predict -PredictionIndicators "研发费用率,所得税税率,应收账款周转天数" -PredictionMethod weighted3 -OutWorkbook .\output\maotai-predict.xlsx
+.\sinitek.ps1 -Action predict -PredictionIndicators "研发费用率,所得税税率,应收账款周转天数" -PredictionMethod weighted3 -OutWorkbook .\output\maotai-predict.xlsx
 ```
 
 精确到单个指标、每个指标单独指定方法：
 
 ```powershell
-.\sinitek.cmd -Action predict -PredictionSettings "研发费用率=avg3,所得税税率=weighted2,应收账款周转天数=zero" -OutWorkbook .\output\maotai-predict.xlsx
+.\sinitek.ps1 -Action predict -PredictionSettings "研发费用率=avg3,所得税税率=weighted2,应收账款周转天数=zero" -OutWorkbook .\output\maotai-predict.xlsx
 ```
 
 底层控件名仍可直接调用：
 
 ```powershell
-.\sinitek.cmd -Action predict -PredictionSettings "ASalescmb_31=avg3,ACapitalcmb_15=weighted2"
+.\sinitek.ps1 -Action predict -PredictionSettings "ASalescmb_31=avg3,ACapitalcmb_15=weighted2"
 ```
 
 `-PredictionMethod` 支持 `latest1`、`avg2`、`avg3`、`weighted2`、`weighted3`、`custom`、`zero`，也支持插件下拉框索引 `0`-`6`。`-PredictionScope` 支持 `all`、`sales`、`capital`；当前 A 股模板的预测设置表单实际暴露 `sales` 和 `capital` 两组指标。`-PredictionRows` 和 `-PredictionIndicators` 都为空时，表示所选范围内全部指标。
@@ -434,36 +452,9 @@ Get-Process EXCEL -ErrorAction SilentlyContinue
 
 正常情况下 CLI 会关闭自己启动的 Excel 进程。
 
-## Bash/WSL 入口
-
-`sinitek.sh` 只是 bash 包装器，最终仍调用 Windows 的 `powershell.exe`：
-
-```bash
-./sinitek.sh -Action inspect
-```
-
-调用链是：
-
-```text
-bash -> powershell.exe -> Excel COM -> 携宁云估值插件
-```
-
-因此它不代表原生 WSL/Linux 支持。即使从 WSL 发起命令，也必须满足：
-
-- Windows 侧能调用 `powershell.exe`。
-- Windows 侧已安装 Microsoft Excel。
-- Windows 侧已安装携宁云估值插件。
-- 工作簿路径能被 Windows PowerShell 正确访问。
-
-如果主要在 Windows PowerShell 中使用，推荐直接用：
-
-```powershell
-.\sinitek.cmd -Action update -Stock 600519
-```
-
 ## 实现说明
 
 CLI 会在当前进程内绕开插件对 `Microsoft.Office.Core.DocumentProperties` 的直接强转，改用 late-binding 读写 workbook 自定义属性。这是为了解决隐藏 Excel COM 自动化场景下的 `E_NOINTERFACE` 问题；不会修改 `C:\Sinitek\SinitekExcelAddin` 中的插件 DLL。
 
-货币单位同步逻辑复刻了插件中“货币单位”下拉框的行为：根据 `currency_unit` 更新“目录”页 `D2`、`D5`、`D6`，并同时写入 `CurrencyUnit` 自定义属性和插件运行时参数。
-历史年数和预测年数也会同步到“目录”页 `D3`、`D4`，避免只写自定义属性导致报表仍沿用模板内置年数。
+货币单位同步逻辑复刻了插件中"货币单位"下拉框的行为：根据 `currency_unit` 更新"目录"页 `D2`、`D5`、`D6`，并同时写入 `CurrencyUnit` 自定义属性和插件运行时参数。
+历史年数和预测年数也会同步到"目录"页 `D3`、`D4`，避免只写自定义属性导致报表仍沿用模板内置年数。
