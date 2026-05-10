@@ -263,12 +263,36 @@ defaults:
 | `produce` | 一键更新并生成 output sheet | 是 | `-Stock`、`-CurrencyUnit`、`-TimeoutSeconds` |
 | `predict` | 执行"预测数据设置" | 是 | `-PredictionMethod`、`-PredictionIndicators`、`-PredictionSettings` |
 
+### 通用参数
+
+以下参数为多个 Action 共用，在下方各 Action 的完整参数示例中不再重复解释：
+
+| 参数 | 说明 | 适用 Action |
+| --- | --- | --- |
+| `-Config` | YAML 配置文件路径，未显式传入时默认读取脚本目录下的 `sinitek.yaml` | 全部 |
+| `-Workbook` | 估值模型 xlsx 路径 | inspect, output, update, produce, predict |
+| `-Visible` | 显示 Excel 窗口，调试时可观察 COM 操作过程 | inspect, output, update, produce, predict |
+| `-Username` | 携宁云账号（邮箱），不传时从环境变量或 YAML 读取 | login, output, update, produce |
+| `-Password` | 携宁云密码，不传时从环境变量或 YAML 读取 | login, output, update, produce |
+| `-TimeoutSeconds` | 总超时秒数，默认 300，传 `0` 关闭 | 全部 |
+| `-OutWorkbook` | 保存到指定路径（三选一） | output, update, produce, predict |
+| `-OutputDir` | 自动生成输出文件名并保存到此目录（三选一） | output, update, produce, predict |
+| `-Save` | 写回原 xlsx 文件（三选一） | output, update, produce, predict |
+
+> 变更类 Action（output、update、produce、predict）必须提供 `-OutWorkbook`、`-OutputDir` 或 `-Save` 之一，否则 CLI 会拒绝执行。
+
 ### inspect
 
 检查当前 workbook、插件版本、模型版本、登录状态和关键自定义属性：
 
 ```powershell
 .\sinitek.ps1 -Action inspect
+```
+
+完整参数示例（仅通用参数）：
+
+```powershell
+.\sinitek.ps1 -Action inspect -Config .\sinitek.yaml -Workbook .\Sinitek_Model_Ashare_V12.xlsx -Visible
 ```
 
 ### login
@@ -287,6 +311,12 @@ defaults:
 
 `login` 只用于校验；CLI 每次执行都是新进程，后续 `update`、`output`、`produce` 仍需要能从环境变量或命令参数读取账号密码。
 
+完整参数示例（仅通用参数 `-Username`、`-Password`）：
+
+```powershell
+.\sinitek.ps1 -Action login -Username "your.name@domainname.com" -Password "your-password"
+```
+
 ### output
 
 导出 output sheet 并保存为副本：
@@ -300,6 +330,17 @@ defaults:
 ```powershell
 .\sinitek.ps1 -Action output -Stock 600519 -CurrencyUnit 0.0001
 ```
+
+完整参数示例（专属参数 + 通用参数）：
+
+```powershell
+.\sinitek.ps1 -Action output -Stock 600519 -CurrencyUnit 0.0001 -OutWorkbook .\output\maotai-output.xlsx -Config .\sinitek.yaml -Workbook .\Sinitek_Model_Ashare_V12.xlsx -Visible -Username "your.name@domainname.com" -Password "your-password"
+```
+
+| 专属参数 | 说明 |
+| --- | --- |
+| `-Stock` | 目标股票代码，若 workbook 中已有 `StkCode` 则可省略 |
+| `-CurrencyUnit` | 货币单位倍率：`1`(元)、`0.001`(千元)、`0.0001`(万元)、`0.000001`(百万元)、`0.00000001`(亿元) |
 
 ### update
 
@@ -327,6 +368,27 @@ defaults:
 .\sinitek.ps1 -Action update -Stock 600519
 ```
 
+完整参数示例（专属参数 + 通用参数）：
+
+```powershell
+.\sinitek.ps1 -Action update -Stock 600519 -Gsdm "600519.SH" -StockName "贵州茅台" -HistoryYear 5 -ForecastYear 4 -CurrencyUnit 0.0001 -SegmentDimension industry -PeerStock "000858.SZ,000568.SZ,600809.SH" -UpdateDirectory:$true -UpdateSrcData:$true -Migrate:$false -AddOutput:$false -OutWorkbook .\output\maotai-updated.xlsx -Config .\sinitek.yaml -Workbook .\Sinitek_Model_Ashare_V12.xlsx -Visible -TimeoutSeconds 600 -Username "your.name@domainname.com" -Password "your-password"
+```
+
+| 专属参数 | 说明 |
+| --- | --- |
+| `-Stock` | 目标股票代码 |
+| `-Gsdm` | 公司代码，不传时通过股票搜索自动解析 |
+| `-StockName` | 股票名称，不传时使用搜索结果中的名称 |
+| `-HistoryYear` | 历史年数，写入"目录"页 `D3` |
+| `-ForecastYear` | 预测年数，写入"目录"页 `D4` |
+| `-CurrencyUnit` | 货币单位倍率（同 output） |
+| `-SegmentDimension` | 业务分部口径：`industry`(按行业)、`product`(按产品)、`region`(按地区) |
+| `-PeerStock` | 可比公司 GSDM 列表（逗号分隔），不传时自动选择 |
+| `-UpdateDirectory` | 是否更新目录页 |
+| `-UpdateSrcData` | 是否更新财务源数据、附注、经营数据、可比分析 |
+| `-Migrate` | 是否执行历史数据迁移 |
+| `-AddOutput` | 更新完成后是否顺带生成 output sheet |
+
 ### produce
 
 一键输出最终产物：登录校验、更新数据、生成 output sheet、保存副本。
@@ -344,6 +406,28 @@ CLI 默认有 300 秒总超时，覆盖 PowerShell、Excel COM 和插件调用�
 ```
 
 传 `-TimeoutSeconds 0` 可关闭总超时监督。
+
+完整参数示例（专属参数 + 通用参数）：
+
+```powershell
+.\sinitek.ps1 -Action produce -Stock 600519 -Gsdm "600519.SH" -StockName "贵州茅台" -HistoryYear 5 -ForecastYear 4 -CurrencyUnit 0.0001 -SegmentDimension industry -PeerStock "000858.SZ,000568.SZ,600809.SH" -UpdateDirectory:$true -UpdateSrcData:$true -Migrate:$false -OutWorkbook .\output\maotai-produced.xlsx -Config .\sinitek.yaml -Workbook .\Sinitek_Model_Ashare_V12.xlsx -Visible -TimeoutSeconds 600 -Username "your.name@domainname.com" -Password "your-password"
+```
+
+| 专属参数 | 说明 |
+| --- | --- |
+| `-Stock` | 目标股票代码 |
+| `-Gsdm` | 公司代码，不传时通过股票搜索自动解析 |
+| `-StockName` | 股票名称，不传时使用搜索结果中的名称 |
+| `-HistoryYear` | 历史年数，写入"目录"页 `D3` |
+| `-ForecastYear` | 预测年数，写入"目录"页 `D4` |
+| `-CurrencyUnit` | 货币单位倍率 |
+| `-SegmentDimension` | 业务分部口径：`industry`/`product`/`region` |
+| `-PeerStock` | 可比公司 GSDM 列表（逗号分隔），不传时自动选择 |
+| `-UpdateDirectory` | 是否更新目录页 |
+| `-UpdateSrcData` | 是否更新财务源数据、附注、经营数据、可比分析 |
+| `-Migrate` | 是否执行历史数据迁移 |
+
+> `produce` 内部强制生成 output sheet，无需（也不支持）`-AddOutput` 参数。专属参数与 `update` 相同，仅缺少 `-AddOutput`。
 
 ### predict
 
@@ -375,12 +459,19 @@ CLI 默认有 300 秒总超时，覆盖 PowerShell、Excel COM 和插件调用�
 
 `-PredictionMethod` 支持 `latest1`、`avg2`、`avg3`、`weighted2`、`weighted3`、`custom`、`zero`，也支持插件下拉框索引 `0`-`6`。`-PredictionScope` 支持 `all`、`sales`、`capital`；当前 A 股模板的预测设置表单实际暴露 `sales` 和 `capital` 两组指标。`-PredictionRows` 和 `-PredictionIndicators` 都为空时，表示所选范围内全部指标。
 
-| 参数 | 用法 |
+完整参数示例（专属参数 + 通用参数）：
+
+```powershell
+.\sinitek.ps1 -Action predict -PredictionScope sales -PredictionRows "22,31,48" -PredictionIndicators "研发费用率,所得税税率" -PredictionMethod avg3 -PredictionSettings "研发费用率=avg3,所得税税率=weighted2" -OutWorkbook .\output\maotai-predict.xlsx -Config .\sinitek.yaml -Workbook .\Sinitek_Model_Ashare_V12.xlsx -Visible -TimeoutSeconds 300
+```
+
+| 专属参数 | 说明 |
 | --- | --- |
-| `-PredictionScope` | 批量范围：`all`、`sales`、`capital`。 |
-| `-PredictionRows` | 按 Excel 行号筛选，逗号/分号分隔，例如 `22,31,48`。 |
-| `-PredictionIndicators` | 按财务指标名筛选，逗号/分号分隔，例如 `研发费用率,所得税税率`。 |
-| `-PredictionSettings` | 精确设置，格式为 `指标名=方法`、`scope:行号=方法` 或 `控件名=方法`。 |
+| `-PredictionScope` | 批量范围：`all`(全部)、`sales`(销售预测)、`capital`(资产预测) |
+| `-PredictionRows` | 按 Excel 行号筛选，逗号/分号分隔 |
+| `-PredictionIndicators` | 按财务指标名筛选，逗号/分号分隔 |
+| `-PredictionMethod` | 批量预测方法：`latest1`/`avg2`/`avg3`/`weighted2`/`weighted3`/`custom`/`zero` |
+| `-PredictionSettings` | 精确设置，格式 `指标名=方法`，优先级高于批量参数 |
 
 当前 A 股模板映射如下，行号来自插件预测设置表单实际绑定的 Excel 行：
 
