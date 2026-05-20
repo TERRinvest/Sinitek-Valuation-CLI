@@ -112,7 +112,40 @@ C:\Windows\assembly\GAC\Extensibility\7.0.3300.0__b03f5f7f11d50a3a\extensibility
 | `sinitek.cmd` | 免执行策略快捷方式，内部调用 `sinitek.ps1` 并带 `-ExecutionPolicy Bypass`。 |
 | `sinitek.yaml` | 本机默认配置。 |
 | `sinitek.yaml.example` | 配置样例，可复制后修改。 |
-| `Sinitek_Model_Ashare_V12.xlsx` | 当前估值模型模板。 |
+| `Sinitek_Model_Ashare_V12.xlsx` | A 股估值模型模板（`ModelType=0`）。 |
+| `Sinitek_Model_HK_V4.xlsx` | 港股估值模型模板（`ModelType=1`，`ModelVersion=1.1.0.4`）。 |
+
+## 模板选择（A 股 / 港股）
+
+仓库默认随附两份估值模板，模板与目标股票的板块必须一一对应，否则插件会因 `ModelType` 与股票代码不匹配而拒绝执行或返回错误数据。
+
+| 板块 | 模板文件 | `ModelType` | 适用股票代码示例 |
+| --- | --- | ---: | --- |
+| A 股 | `Sinitek_Model_Ashare_V12.xlsx` | `0` | `600519`、`000858`、`688343` |
+| 港股 | `Sinitek_Model_HK_V4.xlsx` | `1` | `00700`、`09988`、`03690` |
+
+CLI 通过 workbook 内嵌的 `ModelType` 自定义属性识别板块，并把它透传给携宁云接口（股票搜索、权限校验、预测设置）。脚本默认 `-Workbook` 指向 A 股模板。
+
+**港股自动路由**：当 `-Stock` 或 `-Gsdm` 以 `.HK`（大小写不敏感）结尾时：
+
+1. 未显式传 `-Workbook` 的话，CLI 自动切换到 `Sinitek_Model_HK_V4.xlsx`（覆盖 YAML 中的 `workbook:` 配置）。显式传 `-Workbook` 始终优先。
+2. `-Stock` 上的 `.HK` 后缀会被剥掉再传给云端股票搜索，避免 `/api/stock` 精确匹配失败后回落到"取第一条结果"兜底。`-Gsdm` 保留原格式（`00700.HK` 本就是 Gsdm 标准形式）。
+
+港股一键产物（以下三种等价）：
+
+```powershell
+.\sinitek.ps1 -Action produce -Stock 00700.HK
+.\sinitek.ps1 -Action produce -Stock 00700 -Gsdm 00700.HK
+.\sinitek.ps1 -Action produce -Stock 00700 -Workbook .\Sinitek_Model_HK_V4.xlsx
+```
+
+如果日常以港股为主，建议在 `sinitek.yaml` 中把 `workbook:` 改为港股模板，避免依赖自动路由。
+
+**当前限制（仅与港股模板相关）**：
+
+- `predict` action 的指标行号映射表（见 `predict` 小节）当前**仅按 A 股模板控件名 `ASalescmb_*` / `ACapitalcmb_*` 校准**。港股模板的预测设置表单控件名和行号未在 CLI 中映射，对港股模板调用 `predict` 时按指标名匹配会失败，需要直接传底层控件名（`-PredictionSettings "HKSalescmb_XX=avg3"` 之类）才有可能命中。
+- `segment_dimension` 的 `industry` / `product` / `region` 三档映射是按 A 股"公司经营数据"sheet 校准的，港股模板的分部维度是否一致未验证；不放心时先用插件 GUI 跑一次对照。
+- `update` / `produce` 写入"目录"页 `D2`–`D7` 的单元格地址，假设港股模板"目录"sheet 的布局与 A 股一致；若发现单位、年度未生效，需要回到此处复核。
 
 ## 初始化配置
 
@@ -473,7 +506,7 @@ CLI 默认有 300 秒总超时，覆盖 PowerShell、Excel COM 和插件调用�
 | `-PredictionMethod` | 批量预测方法：`latest1`/`avg2`/`avg3`/`weighted2`/`weighted3`/`custom`/`zero` |
 | `-PredictionSettings` | 精确设置，格式 `指标名=方法`，优先级高于批量参数 |
 
-当前 A 股模板映射如下，行号来自插件预测设置表单实际绑定的 Excel 行：
+当前 A 股模板映射如下，行号来自插件预测设置表单实际绑定的 Excel 行。**港股模板（`Sinitek_Model_HK_V4.xlsx`）的控件名和行号未在 CLI 中映射**，对港股模板调用 `predict` 时按指标名匹配会失败，需要直接传底层控件名（`-PredictionSettings "<控件名>=<方法>"`）才有可能命中：
 
 | Scope | Sheet | 行号 | 控件名 | 推荐指标名 | 可用别名示例 |
 | --- | --- | ---: | --- | --- | --- |

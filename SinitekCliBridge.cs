@@ -223,68 +223,33 @@ public static class SinitekCliBridge
             SetDocProperty("UpdateDirectory", updateDirectory.ToString(CultureInfo.InvariantCulture));
             SetDocProperty("UpdateSrcData", updateSrcData.ToString(CultureInfo.InvariantCulture));
 
-            var reportYear = DateTime.Now.Year - 1;
-            int lastYearFlag = (int)InvokeMethod(handler, "IsLastYear", false, stock.StockCode, reportYear);
-            if (lastYearFlag == -1)
-            {
-                throw new InvalidOperationException("Failed to validate latest annual report period.");
-            }
-
-            int lastYear = lastYearFlag > 0 ? reportYear : reportYear - 1;
-            SinitekExcel.WriterUtil.ModelUtil.LastYear = lastYear;
-
-            int migrateYears = 0;
-            string previousYear = GetDocProperty("year1");
-            if (!string.IsNullOrWhiteSpace(previousYear))
-            {
-                SetDocProperty("lastUpdateYear", previousYear);
-                migrateYears = lastYear - SafeInt(previousYear, lastYear);
-            }
-            SetDocProperty("year1", lastYear.ToString(CultureInfo.InvariantCulture));
-
-            string lastReportDate = (string)InvokeMethod(handler, "GetLastReportDate", false, stock.StockCode);
-            if (string.IsNullOrWhiteSpace(lastReportDate))
-            {
-                throw new InvalidOperationException("Failed to get latest report date for " + stock.StockCode + ".");
-            }
-
             var failures = new List<string>();
+            int lastYear = 0;
+            string lastReportDate = string.Empty;
             Excel.XlCalculation oldCalculation = session.App.Calculation;
             try
             {
                 session.App.Calculation = Excel.XlCalculation.xlCalculationManual;
 
-                if (updateDirectory)
+                if (IsModernHongKongHistoryHandler(handler))
                 {
-                    if (!(bool)InvokeMethod(handler, "UpdateDirectory", false, lastReportDate))
-                    {
-                        failures.Add("directory");
-                    }
+                    RunModernHongKongUpdate(session, handler, stock, updateDirectory, updateSrcData, out lastYear, out lastReportDate, failures);
+                }
+                else
+                {
+                    RunStandardUpdate(session, handler, stock, updateDirectory, updateSrcData, out lastYear, out lastReportDate, failures);
                 }
 
-                if (updateSrcData)
+                SinitekExcel.WriterUtil.ModelUtil.LastYear = lastYear;
+
+                int migrateYears = 0;
+                string previousYear = GetDocProperty("year1");
+                if (!string.IsNullOrWhiteSpace(previousYear))
                 {
-                    SetDocProperty("base_stkcode", stock.StockCode);
-                    if (!(bool)InvokeMethod(handler, "UpdateSrcData", false, lastReportDate))
-                    {
-                        failures.Add("src-data");
-                    }
-                    if (!(bool)InvokeMethod(handler, "UpdateFinancialNotes", false))
-                    {
-                        failures.Add("financial-notes");
-                    }
-                    if (SheetExists(session.Workbook, "Company operating data") || SheetExists(session.Workbook, "公司经营数据"))
-                    {
-                        if (!(bool)InvokeMethod(handler, "UpdateCompanyManagement", false))
-                        {
-                            failures.Add("company-management");
-                        }
-                    }
-                    if (!(bool)InvokeMethod(handler, "UpdatePeerAnalysis", false, lastReportDate))
-                    {
-                        failures.Add("peer-analysis");
-                    }
+                    SetDocProperty("lastUpdateYear", previousYear);
+                    migrateYears = lastYear - SafeInt(previousYear, lastYear);
                 }
+                SetDocProperty("year1", lastYear.ToString(CultureInfo.InvariantCulture));
 
                 if (migrate && migrateYears > 0)
                 {
@@ -411,6 +376,169 @@ public static class SinitekCliBridge
             }
             return string.Join(Environment.NewLine, lines);
         }
+    }
+
+    private static void RunStandardUpdate(
+        ExcelSession session,
+        object handler,
+        Sinitek.WriterModel.StockData stock,
+        bool updateDirectory,
+        bool updateSrcData,
+        out int lastYear,
+        out string lastReportDate,
+        List<string> failures)
+    {
+        var reportYear = DateTime.Now.Year - 1;
+        int lastYearFlag = (int)InvokeMethod(handler, "IsLastYear", false, stock.StockCode, reportYear);
+        if (lastYearFlag == -1)
+        {
+            throw new InvalidOperationException("Failed to validate latest annual report period.");
+        }
+
+        lastYear = lastYearFlag > 0 ? reportYear : reportYear - 1;
+        lastReportDate = (string)InvokeMethod(handler, "GetLastReportDate", false, stock.StockCode);
+        if (string.IsNullOrWhiteSpace(lastReportDate))
+        {
+            throw new InvalidOperationException("Failed to get latest report date for " + stock.StockCode + ".");
+        }
+
+        if (updateDirectory)
+        {
+            if (!(bool)InvokeMethod(handler, "UpdateDirectory", false, lastReportDate))
+            {
+                failures.Add("directory");
+            }
+        }
+
+        if (updateSrcData)
+        {
+            SetDocProperty("base_stkcode", stock.StockCode);
+            if (!(bool)InvokeMethod(handler, "UpdateSrcData", false, lastReportDate))
+            {
+                failures.Add("src-data");
+            }
+            if (!(bool)InvokeMethod(handler, "UpdateFinancialNotes", false))
+            {
+                failures.Add("financial-notes");
+            }
+            if (SheetExists(session.Workbook, "Company operating data") || SheetExists(session.Workbook, "公司经营数据"))
+            {
+                if (!(bool)InvokeMethod(handler, "UpdateCompanyManagement", false))
+                {
+                    failures.Add("company-management");
+                }
+            }
+            if (!(bool)InvokeMethod(handler, "UpdatePeerAnalysis", false, lastReportDate))
+            {
+                failures.Add("peer-analysis");
+            }
+        }
+    }
+
+    private static void RunModernHongKongUpdate(
+        ExcelSession session,
+        object handler,
+        Sinitek.WriterModel.StockData stock,
+        bool updateDirectory,
+        bool updateSrcData,
+        out int lastYear,
+        out string lastReportDate,
+        List<string> failures)
+    {
+        object periods = InvokeMethod(handler, "GetReportPeriodList", false, stock.StockCode);
+        ArrayList reportPeriodList = periods as ArrayList;
+        if (reportPeriodList == null || reportPeriodList.Count == 0)
+        {
+            throw new InvalidOperationException("Failed to get Hong Kong report period list for " + stock.StockCode + ".");
+        }
+
+        Hashtable latestPeriod = InvokeMethod(handler, "GetlastReportPeriod", false, stock.StockCode) as Hashtable;
+        Hashtable lastYearPeriod = InvokeMethod(handler, "GetLastYearReportPeriod", false, stock.StockCode) as Hashtable;
+        lastReportDate = GetHashtableText(latestPeriod, "REPORTDATE", "reportDate", "ReportDate");
+        string lastYearReportDate = GetHashtableText(lastYearPeriod, "REPORTDATE", "reportDate", "ReportDate");
+        string lastYearText = GetHashtableText(lastYearPeriod, "YEAR", "year", "Year");
+        if (string.IsNullOrWhiteSpace(lastYearText) && !string.IsNullOrWhiteSpace(lastYearReportDate) && lastYearReportDate.Length >= 4)
+        {
+            lastYearText = lastYearReportDate.Substring(0, 4);
+        }
+        if (string.IsNullOrWhiteSpace(lastReportDate)
+            || string.IsNullOrWhiteSpace(lastYearReportDate)
+            || !int.TryParse(lastYearText, NumberStyles.Integer, CultureInfo.InvariantCulture, out lastYear))
+        {
+            throw new InvalidOperationException("Failed to resolve Hong Kong report periods for " + stock.StockCode + ".");
+        }
+
+        if (updateDirectory)
+        {
+            if (!(bool)InvokeMethod(handler, "UpdateDirectory", false, lastYearReportDate, lastReportDate))
+            {
+                failures.Add("directory");
+            }
+        }
+
+        if (updateSrcData)
+        {
+            SetDocProperty("base_stkcode", stock.StockCode);
+            if (!(bool)InvokeMethod(handler, "UpdateSrcData", false, reportPeriodList, latestPeriod))
+            {
+                failures.Add("src-data");
+            }
+        }
+    }
+
+    private static bool IsModernHongKongHistoryHandler(object handler)
+    {
+        if (handler == null)
+        {
+            return false;
+        }
+
+        Type type = handler.GetType();
+        return HasInstanceMethod(type, "GetReportPeriodList", new[] { typeof(string) })
+            && HasInstanceMethod(type, "GetlastReportPeriod", new[] { typeof(string) })
+            && HasInstanceMethod(type, "GetLastYearReportPeriod", new[] { typeof(string) })
+            && HasInstanceMethod(type, "UpdateDirectory", new[] { typeof(string), typeof(string) })
+            && HasInstanceMethod(type, "UpdateSrcData", new[] { typeof(ArrayList), typeof(Hashtable) });
+    }
+
+    private static bool HasInstanceMethod(Type type, string name, Type[] parameterTypes)
+    {
+        return type.GetMethod(
+            name,
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+            null,
+            parameterTypes,
+            null) != null;
+    }
+
+    private static string GetHashtableText(Hashtable table, params string[] keys)
+    {
+        if (table == null)
+        {
+            return string.Empty;
+        }
+
+        foreach (string key in keys)
+        {
+            if (table.ContainsKey(key) && table[key] != null)
+            {
+                return Convert.ToString(table[key], CultureInfo.InvariantCulture) ?? string.Empty;
+            }
+        }
+
+        foreach (object key in table.Keys)
+        {
+            string keyText = Convert.ToString(key, CultureInfo.InvariantCulture);
+            foreach (string expected in keys)
+            {
+                if (string.Equals(keyText, expected, StringComparison.OrdinalIgnoreCase) && table[key] != null)
+                {
+                    return Convert.ToString(table[key], CultureInfo.InvariantCulture) ?? string.Empty;
+                }
+            }
+        }
+
+        return string.Empty;
     }
 
     private static string ResolveHandlerType(string buttonId)

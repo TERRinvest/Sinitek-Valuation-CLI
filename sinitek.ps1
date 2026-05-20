@@ -377,6 +377,33 @@ function Write-RedirectedFile {
     }
 }
 
+function Save-RedirectedStreams {
+    param(
+        [Threading.Tasks.Task[string]]$StdoutTask,
+        [Threading.Tasks.Task[string]]$StderrTask,
+        [string]$StdoutPath,
+        [string]$StderrPath
+    )
+
+    try {
+        if ($StdoutTask) {
+            $StdoutTask.Wait(5000) | Out-Null
+            [IO.File]::WriteAllText($StdoutPath, $StdoutTask.Result, $Utf8NoBom)
+        }
+    }
+    catch {
+    }
+
+    try {
+        if ($StderrTask) {
+            $StderrTask.Wait(5000) | Out-Null
+            [IO.File]::WriteAllText($StderrPath, $StderrTask.Result, $Utf8NoBom)
+        }
+    }
+    catch {
+    }
+}
+
 function Read-ExcelPidFile {
     param([string]$Path)
 
@@ -482,18 +509,30 @@ function Invoke-WithTimeoutSupervisor {
 
     $ArgumentString = Join-WindowsCommandLineArguments -Arguments $ChildArgs
     $Process = $null
+    $StdoutTask = $null
+    $StderrTask = $null
     try {
-        $Process = Start-Process `
-            -FilePath $PowerShellExe `
-            -ArgumentList $ArgumentString `
-            -WorkingDirectory (Get-Location).Path `
-            -RedirectStandardOutput $StdoutPath `
-            -RedirectStandardError $StderrPath `
-            -WindowStyle Hidden `
-            -PassThru
+        $StartInfo = New-Object Diagnostics.ProcessStartInfo
+        $StartInfo.FileName = $PowerShellExe
+        $StartInfo.Arguments = $ArgumentString
+        $StartInfo.WorkingDirectory = (Get-Location).Path
+        $StartInfo.UseShellExecute = $false
+        $StartInfo.RedirectStandardOutput = $true
+        $StartInfo.RedirectStandardError = $true
+        $StartInfo.CreateNoWindow = $true
+        $StartInfo.WindowStyle = [Diagnostics.ProcessWindowStyle]::Hidden
+        $StartInfo.StandardOutputEncoding = $Utf8NoBom
+        $StartInfo.StandardErrorEncoding = $Utf8NoBom
+
+        $Process = New-Object Diagnostics.Process
+        $Process.StartInfo = $StartInfo
+        [void]$Process.Start()
+        $StdoutTask = $Process.StandardOutput.ReadToEndAsync()
+        $StderrTask = $Process.StandardError.ReadToEndAsync()
 
         if ($Process.WaitForExit($TimeoutSeconds * 1000)) {
             $Process.WaitForExit()
+            Save-RedirectedStreams -StdoutTask $StdoutTask -StderrTask $StderrTask -StdoutPath $StdoutPath -StderrPath $StderrPath
             $ExitCode = $Process.ExitCode
             $StderrText = ''
             try {
@@ -531,6 +570,7 @@ function Invoke-WithTimeoutSupervisor {
         }
 
         Start-Sleep -Milliseconds 200
+        Save-RedirectedStreams -StdoutTask $StdoutTask -StderrTask $StderrTask -StdoutPath $StdoutPath -StderrPath $StderrPath
         Write-RedirectedFile -Path $StdoutPath
         Write-RedirectedFile -Path $StderrPath -ErrorStream
         [Console]::Error.WriteLine("ERROR: Action '$ActionName' timed out after $TimeoutSeconds seconds.")
@@ -597,6 +637,15 @@ catch {
 }
 if ($TimeoutSeconds -lt 0 -or $TimeoutSeconds -gt 86400) {
     throw "TimeoutSeconds must be between 0 and 86400."
+}
+
+$StockHasHKSuffix = (-not [string]::IsNullOrWhiteSpace($Stock)) -and $Stock.Trim().EndsWith('.HK', [StringComparison]::OrdinalIgnoreCase)
+$GsdmHasHKSuffix = (-not [string]::IsNullOrWhiteSpace($Gsdm)) -and $Gsdm.Trim().EndsWith('.HK', [StringComparison]::OrdinalIgnoreCase)
+if (($StockHasHKSuffix -or $GsdmHasHKSuffix) -and -not (Test-ExplicitParam 'Workbook')) {
+    $Workbook = Join-Path $Root 'Sinitek_Model_HK_V4.xlsx'
+}
+if ($StockHasHKSuffix) {
+    $Stock = $Stock.Trim().Substring(0, $Stock.Trim().Length - 3)
 }
 
 if (-not $NoTimeoutSupervisor.IsPresent -and $TimeoutSeconds -gt 0) {
@@ -806,6 +855,7 @@ try {
             }
         }
     }
+    exit 0
 }
 catch {
     [Console]::Error.WriteLine("ERROR: " + (Get-CliExceptionMessage $_.Exception))

@@ -2,6 +2,9 @@
 # Keep credentials in environment variables, not in this file.
 
 # CLI 默认打开的估值模型文件。
+# A 股：./Sinitek_Model_Ashare_V12.xlsx（ModelType=0）
+# 港股：./Sinitek_Model_HK_V4.xlsx       （ModelType=1）
+# 模板与目标股票板块必须一致；命令行 -Workbook 会覆盖此项。
 workbook: ./Sinitek_Model_Ashare_V12.xlsx
 
 # 未传 -OutWorkbook 时，自动生成产物文件的输出目录。
@@ -52,6 +55,8 @@ defaults:
 
   # predict action 的批量应用范围：all/sales/capital/investment/assume。
   # 留空或 all 表示当前预测设置表单内所有指标。
+  # 注意：以下 prediction_* 字段当前的指标行号映射仅按 A 股模板校准；
+  # 港股模板（Sinitek_Model_HK_V4.xlsx）需通过 prediction_settings 直接传底层控件名才能命中。
   prediction_scope: "all"
 
   # predict action 的批量应用行号，逗号分隔；留空表示所选范围内全部行。
