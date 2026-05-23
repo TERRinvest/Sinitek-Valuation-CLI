@@ -13,6 +13,7 @@ param(
     [string]$Password = $env:SINITEK_PASSWORD,
 
     [string]$Stock = '',
+    [string]$Stocks = '',
     [string]$Gsdm = '',
     [string]$StockName = '',
     [int]$HistoryYear = 5,
@@ -31,6 +32,7 @@ param(
     [bool]$AddOutput = $false,
     [ValidateRange(0, 86400)]
     [int]$TimeoutSeconds = 300,
+    [switch]$PerfTrace,
 
     [switch]$NoTimeoutSupervisor,
     [string]$ExcelPidFile = ''
@@ -41,6 +43,20 @@ $Utf8NoBom = New-Object System.Text.UTF8Encoding $false
 [Console]::InputEncoding = $Utf8NoBom
 [Console]::OutputEncoding = $Utf8NoBom
 $OutputEncoding = $Utf8NoBom
+$PerfStopwatch = [Diagnostics.Stopwatch]::StartNew()
+$script:PerfLastMs = 0
+
+function Write-PerfTrace {
+    param([string]$Phase)
+    if (-not $PerfTrace.IsPresent) {
+        return
+    }
+
+    $TotalMs = $PerfStopwatch.ElapsedMilliseconds
+    $ElapsedMs = $TotalMs - $script:PerfLastMs
+    $script:PerfLastMs = $TotalMs
+    [Console]::Error.WriteLine("PERF Phase=ps.$Phase ElapsedMs=$ElapsedMs TotalMs=$TotalMs")
+}
 
 if ($PSVersionTable.PSEdition -eq 'Core') {
     $ForwardArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath)
@@ -377,6 +393,15 @@ function Write-RedirectedFile {
     }
 }
 
+function Split-StockList {
+    param([string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return @()
+    }
+
+    return @($Value -split '[,;\r\n\t ]+' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { $_.Trim() })
+}
+
 function Save-RedirectedStreams {
     param(
         [Threading.Tasks.Task[string]]$StdoutTask,
@@ -648,7 +673,38 @@ if ($StockHasHKSuffix) {
     $Stock = $Stock.Trim().Substring(0, $Stock.Trim().Length - 3)
 }
 
+$BatchMode = -not [string]::IsNullOrWhiteSpace($Stocks)
+$BatchStocks = Split-StockList $Stocks
+if ($BatchMode) {
+    if ($Action -ne 'produce') {
+        throw "Batch mode via -Stocks currently supports only -Action produce."
+    }
+    if ($BatchStocks.Count -eq 0) {
+        throw "Batch mode requires at least one stock in -Stocks."
+    }
+
+    $BatchHasHKSuffix = $false
+    $BatchHasNonHKSuffix = $false
+    foreach ($BatchStock in $BatchStocks) {
+        if ($BatchStock.EndsWith('.HK', [StringComparison]::OrdinalIgnoreCase)) {
+            $BatchHasHKSuffix = $true
+        }
+        else {
+            $BatchHasNonHKSuffix = $true
+        }
+    }
+    if ($BatchHasHKSuffix -and $BatchHasNonHKSuffix -and -not (Test-ExplicitParam 'Workbook')) {
+        throw "Batch mode cannot infer one workbook for mixed A-share and HK stocks. Run separate batches or pass -Workbook explicitly."
+    }
+    if ($BatchHasHKSuffix -and -not (Test-ExplicitParam 'Workbook')) {
+        $Workbook = Join-Path $Root 'Sinitek_Model_HK_V4.xlsx'
+    }
+}
+
+Write-PerfTrace 'config-resolved'
+
 if (-not $NoTimeoutSupervisor.IsPresent -and $TimeoutSeconds -gt 0) {
+    Write-PerfTrace 'supervisor-launch'
     Invoke-WithTimeoutSupervisor -TimeoutSeconds $TimeoutSeconds -ActionName $Action
 }
 
@@ -667,6 +723,10 @@ else {
 }
 if (Test-ExplicitParam 'OutWorkbook') {
     $OutWorkbook = Resolve-OptionalPath -Path $OutWorkbook -BasePath (Get-Location).Path
+}
+if ($BatchMode -and -not [string]::IsNullOrWhiteSpace($OutputDir)) {
+    $OutputBasePath = if (Test-ExplicitParam 'OutputDir') { (Get-Location).Path } else { $ConfigBase }
+    $OutputDir = Resolve-OptionalPath -Path $OutputDir -BasePath $OutputBasePath
 }
 
 $OfficeDll = First-ExistingPath @(
@@ -696,6 +756,7 @@ foreach ($RequiredPath in @($BridgePath, $SinitekDll, $NewtonsoftDll, $OfficeDll
 [Reflection.Assembly]::LoadFrom($NewtonsoftDll) | Out-Null
 [Reflection.Assembly]::LoadFrom($SinitekDll) | Out-Null
 [Reflection.Assembly]::LoadFrom($ExtensibilityDll) | Out-Null
+Write-PerfTrace 'assemblies-loaded'
 
 $TrustedPlatformAssemblies = @()
 $TrustedPlatformAssemblyString = [AppContext]::GetData('TRUSTED_PLATFORM_ASSEMBLIES')
@@ -719,12 +780,21 @@ $References = @(
 ) | Where-Object { $_ } | Select-Object -Unique
 
 Add-Type -Path $BridgePath -ReferencedAssemblies $References
+Write-PerfTrace 'bridge-compiled'
 
 $WorkbookPath = if ($Workbook) { (Resolve-Path -LiteralPath $Workbook).Path } else { '' }
 
 $MutatingActions = @('output', 'update', 'produce', 'predict')
 if ($MutatingActions -contains $Action) {
-    if (-not $Save.IsPresent -and [string]::IsNullOrWhiteSpace($OutWorkbook) -and -not [string]::IsNullOrWhiteSpace($OutputDir)) {
+    if ($BatchMode) {
+        if ($Save.IsPresent -or -not [string]::IsNullOrWhiteSpace($OutWorkbook)) {
+            throw "Batch produce requires -OutputDir/output_dir and does not support -Save or -OutWorkbook."
+        }
+        if ([string]::IsNullOrWhiteSpace($OutputDir)) {
+            throw "Batch produce requires -OutputDir or output_dir in sinitek.yaml."
+        }
+    }
+    elseif (-not $Save.IsPresent -and [string]::IsNullOrWhiteSpace($OutWorkbook) -and -not [string]::IsNullOrWhiteSpace($OutputDir)) {
         $OutputBasePath = if (Test-ExplicitParam 'OutputDir') { (Get-Location).Path } else { $ConfigBase }
         $OutputBase = Resolve-OptionalPath -Path $OutputDir -BasePath $OutputBasePath
         $WorkbookName = if ($WorkbookPath) { [IO.Path]::GetFileNameWithoutExtension($WorkbookPath) } else { 'workbook' }
@@ -742,7 +812,7 @@ if ($MutatingActions -contains $Action) {
         $Timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
         $OutWorkbook = Join-Path $OutputBase "$WorkbookName-$ActionName$StockPart-$Timestamp.xlsx"
     }
-    if (-not $Save.IsPresent -and [string]::IsNullOrWhiteSpace($OutWorkbook)) {
+    if (-not $BatchMode -and -not $Save.IsPresent -and [string]::IsNullOrWhiteSpace($OutWorkbook)) {
         throw "Mutating action '$Action' requires -OutWorkbook, -OutputDir, or -Save."
     }
 }
@@ -750,10 +820,10 @@ if ($MutatingActions -contains $Action) {
 try {
     switch ($Action) {
         'inspect' {
-            [SinitekCliBridge]::Inspect($WorkbookPath, $Visible.IsPresent)
+            [SinitekCliBridge]::Inspect($WorkbookPath, $Visible.IsPresent, $PerfTrace.IsPresent)
         }
         'login' {
-            [SinitekCliBridge]::Login($Username, $Password)
+            [SinitekCliBridge]::Login($Username, $Password, $PerfTrace.IsPresent)
         }
         'output' {
             [SinitekCliBridge]::OutputDirect(
@@ -764,7 +834,8 @@ try {
                 $Stock,
                 $CurrencyUnit,
                 $Username,
-                $Password
+                $Password,
+                $PerfTrace.IsPresent
             )
         }
         'predict' {
@@ -777,7 +848,8 @@ try {
                 $PredictionRows,
                 $PredictionIndicators,
                 $PredictionMethod,
-                $PredictionSettings
+                $PredictionSettings,
+                $PerfTrace.IsPresent
             )
             $Artifact = if (-not [string]::IsNullOrWhiteSpace($OutWorkbook)) {
                 $OutWorkbook
@@ -814,44 +886,67 @@ try {
                 $Migrate,
                 $AddOutput,
                 $Username,
-                $Password
+                $Password,
+                $PerfTrace.IsPresent
             )
         }
         'produce' {
-            $Result = [SinitekCliBridge]::UpdateDirect(
-                $WorkbookPath,
-                $OutWorkbook,
-                $Save.IsPresent,
-                $Visible.IsPresent,
-                $Stock,
-                $Gsdm,
-                $StockName,
-                $HistoryYear,
-                $ForecastYear,
-                $CurrencyUnit,
-                $SegmentDimension,
-                $PeerStock,
-                $UpdateDirectory,
-                $UpdateSrcData,
-                $Migrate,
-                $true,
-                $Username,
-                $Password
-            )
-            $Artifact = if (-not [string]::IsNullOrWhiteSpace($OutWorkbook)) {
-                $OutWorkbook
-            }
-            elseif ($Save.IsPresent) {
-                $WorkbookPath
+            if ($BatchMode) {
+                [SinitekCliBridge]::ProduceBatchDirect(
+                    $WorkbookPath,
+                    $OutputDir,
+                    $Visible.IsPresent,
+                    $Stocks,
+                    $HistoryYear,
+                    $ForecastYear,
+                    $CurrencyUnit,
+                    $SegmentDimension,
+                    $PeerStock,
+                    $UpdateDirectory,
+                    $UpdateSrcData,
+                    $Migrate,
+                    $Username,
+                    $Password,
+                    $PerfTrace.IsPresent
+                )
             }
             else {
-                ''
-            }
-            if (-not [string]::IsNullOrWhiteSpace($Artifact)) {
-                $Result + [Environment]::NewLine + "Artifact=" + $Artifact
-            }
-            else {
-                $Result
+                $Result = [SinitekCliBridge]::UpdateDirect(
+                    $WorkbookPath,
+                    $OutWorkbook,
+                    $Save.IsPresent,
+                    $Visible.IsPresent,
+                    $Stock,
+                    $Gsdm,
+                    $StockName,
+                    $HistoryYear,
+                    $ForecastYear,
+                    $CurrencyUnit,
+                    $SegmentDimension,
+                    $PeerStock,
+                    $UpdateDirectory,
+                    $UpdateSrcData,
+                    $Migrate,
+                    $true,
+                    $Username,
+                    $Password,
+                    $PerfTrace.IsPresent
+                )
+                $Artifact = if (-not [string]::IsNullOrWhiteSpace($OutWorkbook)) {
+                    $OutWorkbook
+                }
+                elseif ($Save.IsPresent) {
+                    $WorkbookPath
+                }
+                else {
+                    ''
+                }
+                if (-not [string]::IsNullOrWhiteSpace($Artifact)) {
+                    $Result + [Environment]::NewLine + "Artifact=" + $Artifact
+                }
+                else {
+                    $Result
+                }
             }
         }
     }

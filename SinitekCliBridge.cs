@@ -68,9 +68,44 @@ public static class SinitekCliBridge
 
     private static bool documentPropertyPatchInstalled;
 
-    public static string Inspect(string workbookPath, bool visible)
+    private sealed class PerfTracer
     {
-        using (var session = new ExcelSession(workbookPath, visible, true))
+        private readonly bool enabled;
+        private readonly string scope;
+        private readonly Stopwatch stopwatch;
+        private long lastMilliseconds;
+
+        public PerfTracer(bool enabled, string scope)
+        {
+            this.enabled = enabled;
+            this.scope = string.IsNullOrWhiteSpace(scope) ? "cli" : scope;
+            if (enabled)
+            {
+                stopwatch = Stopwatch.StartNew();
+                Mark("start");
+            }
+        }
+
+        public void Mark(string phase)
+        {
+            if (!enabled)
+            {
+                return;
+            }
+
+            long totalMilliseconds = stopwatch.ElapsedMilliseconds;
+            long elapsedMilliseconds = totalMilliseconds - lastMilliseconds;
+            lastMilliseconds = totalMilliseconds;
+            Console.Error.WriteLine("PERF Phase=" + scope + "." + phase
+                + " ElapsedMs=" + elapsedMilliseconds.ToString(CultureInfo.InvariantCulture)
+                + " TotalMs=" + totalMilliseconds.ToString(CultureInfo.InvariantCulture));
+        }
+    }
+
+    public static string Inspect(string workbookPath, bool visible, bool perfTrace)
+    {
+        var tracer = new PerfTracer(perfTrace, "inspect");
+        using (var session = new ExcelSession(workbookPath, visible, true, tracer))
         {
             var lines = new List<string>();
             lines.Add("Workbook=" + session.Workbook.FullName);
@@ -89,13 +124,16 @@ public static class SinitekCliBridge
             lines.Add("ForecastYear=" + GetDocProperty("ForecastYear"));
             lines.Add("CurrencyUnit=" + GetDocProperty("CurrencyUnit"));
             lines.Add("Sheets=" + session.Workbook.Worksheets.Count);
+            tracer.Mark("complete");
             return string.Join(Environment.NewLine, lines);
         }
     }
 
-    public static string Login(string username, string password)
+    public static string Login(string username, string password, bool perfTrace)
     {
+        var tracer = new PerfTracer(perfTrace, "login");
         LoadIpConfig();
+        tracer.Mark("ip-config");
         if (string.IsNullOrWhiteSpace(username) || string.IsNullOrEmpty(password))
         {
             throw new ArgumentException("Username and password are required for login.");
@@ -117,6 +155,7 @@ public static class SinitekCliBridge
             lines.Add("Message=" + message);
         }
 
+        tracer.Mark("complete");
         return string.Join(Environment.NewLine, lines);
     }
 
@@ -128,15 +167,20 @@ public static class SinitekCliBridge
         string stockCode,
         string currencyUnit,
         string username,
-        string password)
+        string password,
+        bool perfTrace)
     {
-        using (var session = new ExcelSession(workbookPath, visible, false))
+        var tracer = new PerfTracer(perfTrace, "output");
+        using (var session = new ExcelSession(workbookPath, visible, false, tracer))
         {
             LoginIfProvided(username, password);
+            tracer.Mark("login");
             EnsureLoggedIn();
+            tracer.Mark("ensure-logged-in");
             CurrencyUnitSpec currency = ApplyCurrencyUnit(session.Workbook, currencyUnit);
             SinitekExcel.WriterUtil.ModelUtil.CurrencyUnit = currency.Scale;
             SetDocProperty("CurrencyUnit", currency.ScaleText);
+            tracer.Mark("currency");
 
             string modelStock = string.IsNullOrWhiteSpace(stockCode) ? GetDocProperty("StkCode") : stockCode.Trim();
             if (string.IsNullOrWhiteSpace(modelStock))
@@ -145,11 +189,15 @@ public static class SinitekCliBridge
             }
 
             session.App.CalculateFull();
+            tracer.Mark("calculate-full");
             string suffix = ResolveMailSuffix(username);
             string handlerType = ResolveHandlerType("btnOutput");
             object handler = Activator.CreateInstance(ResolveType(handlerType));
             bool ok = (bool)InvokeMethod(handler, "GetOutputSheet", true, suffix, modelStock);
+            tracer.Mark("output-sheet");
             SaveIfRequested(session.Workbook, outWorkbook, saveOriginal);
+            tracer.Mark("save");
+            tracer.Mark("complete");
             return "OutputDirect=" + ok
                 + Environment.NewLine + "Handler=" + handlerType
                 + Environment.NewLine + "MailSuffix=" + suffix
@@ -177,128 +225,263 @@ public static class SinitekCliBridge
         bool migrate,
         bool addOutput,
         string username,
-        string password)
+        string password,
+        bool perfTrace)
     {
-        using (var session = new ExcelSession(workbookPath, visible, false))
+        var tracer = new PerfTracer(perfTrace, "update");
+        using (var session = new ExcelSession(workbookPath, visible, false, tracer))
         {
             LoginIfProvided(username, password);
+            tracer.Mark("login");
             EnsureLoggedIn();
-
-            var stock = ResolveStock(stockCode, gsdm, stockName);
-            string previousGsdm = GetDocProperty("GSCode");
-            PeerStockSelection peerSelection = ResolvePeerStockSelection(stock, peerStock, previousGsdm);
-            string handlerType = ResolveHandlerType("btnUpdate");
-            object handler = Activator.CreateInstance(ResolveType(handlerType));
-
-            SinitekExcel.WriterUtil.ModelUtil.StockCode = stock.StockCode;
-            SinitekExcel.WriterUtil.ModelUtil.StockName = stock.StockName;
-            SinitekExcel.WriterUtil.ModelUtil.Gsdm = stock.Gsdm;
-            SinitekExcel.WriterUtil.ModelUtil.HistoryYear = historyYear;
-            ApplyYearSettings(session.Workbook, historyYear, forecastYear);
-            CurrencyUnitSpec currency = ApplyCurrencyUnit(session.Workbook, currencyUnit);
-            SinitekExcel.WriterUtil.ModelUtil.CurrencyUnit = currency.Scale;
-            SinitekExcel.WriterUtil.ModelUtil.UpdateCheck = true;
-
-            SetDocProperty("StkCode", stock.StockCode);
-            SetDocProperty("GSCode", stock.Gsdm);
-            SetDocProperty("HistoryYear", historyYear.ToString(CultureInfo.InvariantCulture));
-            SetDocProperty("ForecastYear", forecastYear.ToString(CultureInfo.InvariantCulture));
-            SetDocProperty("CurrencyUnit", currency.ScaleText);
-            var dimensionToPlugin = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
-            dimensionToPlugin.Add("industry", new[] { "1", "\u6309\u884c\u4e1a" });
-            dimensionToPlugin.Add("product",  new[] { "2", "\u6309\u4ea7\u54c1" });
-            dimensionToPlugin.Add("region",   new[] { "3", "\u6309\u5730\u533a" });
-            if (string.IsNullOrWhiteSpace(segmentDimension))
+            tracer.Mark("ensure-logged-in");
+            UpdateExecutionResult result = RunUpdateDirectInSession(session, new UpdateOptions
             {
-                segmentDimension = "product";
-            }
-            string[] mapped;
-            if (!dimensionToPlugin.TryGetValue(segmentDimension, out mapped))
+                WorkbookPath = workbookPath,
+                OutWorkbook = outWorkbook,
+                SaveOriginal = saveOriginal,
+                OutputActionName = "Update",
+                StockCode = NormalizeStockInputForSearch(stockCode),
+                Gsdm = gsdm,
+                StockName = stockName,
+                HistoryYear = historyYear,
+                ForecastYear = forecastYear,
+                CurrencyUnit = currencyUnit,
+                SegmentDimension = segmentDimension,
+                PeerStock = peerStock,
+                UpdateDirectory = updateDirectory,
+                UpdateSrcData = updateSrcData,
+                Migrate = migrate,
+                AddOutput = addOutput,
+                Username = username
+            }, tracer);
+            tracer.Mark("complete");
+            return result.OutputText;
+        }
+    }
+
+    public static string ProduceBatchDirect(
+        string workbookPath,
+        string outputDir,
+        bool visible,
+        string stocks,
+        int historyYear,
+        int forecastYear,
+        string currencyUnit,
+        string segmentDimension,
+        string peerStock,
+        bool updateDirectory,
+        bool updateSrcData,
+        bool migrate,
+        string username,
+        string password,
+        bool perfTrace)
+    {
+        var tracer = new PerfTracer(perfTrace, "batch-produce");
+        List<string> stockList = ParseStockList(stocks);
+        if (stockList.Count == 0)
+        {
+            throw new ArgumentException("Batch produce requires at least one stock in -Stocks.");
+        }
+        if (string.IsNullOrWhiteSpace(outputDir))
+        {
+            throw new ArgumentException("Batch produce requires outputDir.");
+        }
+
+        var lines = new List<string>();
+        lines.Add("BatchProduce=true");
+        lines.Add("BatchCount=" + stockList.Count.ToString(CultureInfo.InvariantCulture));
+
+        using (var applicationSession = new ExcelApplicationSession(visible, tracer))
+        {
+            LoginIfProvided(username, password);
+            tracer.Mark("batch-login");
+
+            for (int i = 0; i < stockList.Count; i++)
             {
-                mapped = dimensionToPlugin["product"];
-            }
-            SetDocProperty("CompanyManagementType", mapped[0]);
-            SetDocProperty("CompanyManagementName", mapped[1]);
-            SetDocProperty("PeerStock", peerSelection.Gsdms);
-            SetDocProperty("UpdateDirectory", updateDirectory.ToString(CultureInfo.InvariantCulture));
-            SetDocProperty("UpdateSrcData", updateSrcData.ToString(CultureInfo.InvariantCulture));
-
-            var failures = new List<string>();
-            int lastYear = 0;
-            string lastReportDate = string.Empty;
-            Excel.XlCalculation oldCalculation = session.App.Calculation;
-            try
-            {
-                session.App.Calculation = Excel.XlCalculation.xlCalculationManual;
-
-                if (IsModernHongKongHistoryHandler(handler))
+                string inputStock = stockList[i];
+                string normalizedStock = NormalizeStockInputForSearch(inputStock);
+                tracer.Mark("item-" + (i + 1).ToString(CultureInfo.InvariantCulture) + "-start");
+                try
                 {
-                    RunModernHongKongUpdate(session, handler, stock, updateDirectory, updateSrcData, out lastYear, out lastReportDate, failures);
-                }
-                else
-                {
-                    RunStandardUpdate(session, handler, stock, updateDirectory, updateSrcData, out lastYear, out lastReportDate, failures);
-                }
-
-                SinitekExcel.WriterUtil.ModelUtil.LastYear = lastYear;
-
-                int migrateYears = 0;
-                string previousYear = GetDocProperty("year1");
-                if (!string.IsNullOrWhiteSpace(previousYear))
-                {
-                    SetDocProperty("lastUpdateYear", previousYear);
-                    migrateYears = lastYear - SafeInt(previousYear, lastYear);
-                }
-                SetDocProperty("year1", lastYear.ToString(CultureInfo.InvariantCulture));
-
-                if (migrate && migrateYears > 0)
-                {
-                    if (!(bool)InvokeMethod(handler, "MigrateData", false, migrateYears))
+                    using (var session = new ExcelSession(applicationSession, workbookPath, false, tracer))
                     {
-                        failures.Add("migrate");
+                        EnsureLoggedIn();
+                        tracer.Mark("item-" + (i + 1).ToString(CultureInfo.InvariantCulture) + "-ensure-logged-in");
+                        UpdateExecutionResult result = RunUpdateDirectInSession(session, new UpdateOptions
+                        {
+                            WorkbookPath = workbookPath,
+                            OutputDir = outputDir,
+                            OutputActionName = "Produce",
+                            StockCode = normalizedStock,
+                            HistoryYear = historyYear,
+                            ForecastYear = forecastYear,
+                            CurrencyUnit = currencyUnit,
+                            SegmentDimension = segmentDimension,
+                            PeerStock = peerStock,
+                            UpdateDirectory = updateDirectory,
+                            UpdateSrcData = updateSrcData,
+                            Migrate = migrate,
+                            AddOutput = true,
+                            Username = username
+                        }, tracer);
+
+                        lines.Add("Item=" + (i + 1).ToString(CultureInfo.InvariantCulture));
+                        lines.Add("InputStock=" + inputStock);
+                        lines.Add(result.OutputText);
+                        if (!string.IsNullOrWhiteSpace(result.Artifact))
+                        {
+                            lines.Add("Artifact=" + result.Artifact);
+                        }
                     }
                 }
-
-                if (addOutput)
+                catch (Exception ex)
                 {
-                    string outputType = ResolveHandlerType("btnOutput");
-                    object outputHandler = Activator.CreateInstance(ResolveType(outputType));
-                    if (!(bool)InvokeMethod(outputHandler, "GetOutputSheet", true, ResolveMailSuffix(username), stock.StockCode))
-                    {
-                        failures.Add("output");
-                    }
+                    throw new InvalidOperationException("Batch produce failed for stock '" + inputStock + "': " + ex.Message, ex);
                 }
-
-                session.App.CalculateFull();
-            }
-            finally
-            {
-                session.App.Calculation = oldCalculation;
+                tracer.Mark("item-" + (i + 1).ToString(CultureInfo.InvariantCulture) + "-complete");
             }
 
-            SaveIfRequested(session.Workbook, outWorkbook, saveOriginal);
-
-            var lines = new List<string>();
-            lines.Add("Update=" + (failures.Count == 0));
-            lines.Add("Handler=" + handlerType);
-            lines.Add("Stock=" + stock.StockCode);
-            lines.Add("GSCode=" + stock.Gsdm);
-            lines.Add("LastReportDate=" + lastReportDate);
-            lines.Add("LastYear=" + lastYear.ToString(CultureInfo.InvariantCulture));
-            lines.Add("HistoryYear=" + historyYear.ToString(CultureInfo.InvariantCulture));
-            lines.Add("ForecastYear=" + forecastYear.ToString(CultureInfo.InvariantCulture));
-            lines.Add("CurrencyUnit=" + currency.CurrencyUnitName);
-            lines.Add("CurrencyUnitScale=" + currency.ScaleText);
-            lines.Add("PeerStock=" + peerSelection.Gsdms);
-            lines.Add("PeerStockSource=" + peerSelection.Source);
-            lines.Add("PeerStockCount=" + peerSelection.Count.ToString(CultureInfo.InvariantCulture));
-            if (failures.Count > 0)
-            {
-                lines.Add("Failures=" + string.Join(",", failures));
-            }
-
+            tracer.Mark("complete");
             return string.Join(Environment.NewLine, lines);
         }
+    }
+
+    private static UpdateExecutionResult RunUpdateDirectInSession(
+        ExcelSession session,
+        UpdateOptions options,
+        PerfTracer tracer)
+    {
+        var stock = ResolveStock(options.StockCode, options.Gsdm, options.StockName);
+        tracer.Mark("resolve-stock");
+        string artifact = options.OutWorkbook;
+        if (string.IsNullOrWhiteSpace(artifact) && !string.IsNullOrWhiteSpace(options.OutputDir))
+        {
+            artifact = BuildOutputWorkbookPath(options.OutputDir, options.WorkbookPath, options.OutputActionName, stock.StockCode);
+        }
+        string previousGsdm = GetDocProperty("GSCode");
+        PeerStockSelection peerSelection = ResolvePeerStockSelection(stock, options.PeerStock, previousGsdm);
+        tracer.Mark("resolve-peer-stock");
+        string handlerType = ResolveHandlerType("btnUpdate");
+        object handler = Activator.CreateInstance(ResolveType(handlerType));
+        tracer.Mark("handler");
+
+        SinitekExcel.WriterUtil.ModelUtil.StockCode = stock.StockCode;
+        SinitekExcel.WriterUtil.ModelUtil.StockName = stock.StockName;
+        SinitekExcel.WriterUtil.ModelUtil.Gsdm = stock.Gsdm;
+        SinitekExcel.WriterUtil.ModelUtil.HistoryYear = options.HistoryYear;
+        ApplyYearSettings(session.Workbook, options.HistoryYear, options.ForecastYear);
+        CurrencyUnitSpec currency = ApplyCurrencyUnit(session.Workbook, options.CurrencyUnit);
+        SinitekExcel.WriterUtil.ModelUtil.CurrencyUnit = currency.Scale;
+        SinitekExcel.WriterUtil.ModelUtil.UpdateCheck = true;
+
+        SetDocProperty("StkCode", stock.StockCode);
+        SetDocProperty("GSCode", stock.Gsdm);
+        SetDocProperty("HistoryYear", options.HistoryYear.ToString(CultureInfo.InvariantCulture));
+        SetDocProperty("ForecastYear", options.ForecastYear.ToString(CultureInfo.InvariantCulture));
+        SetDocProperty("CurrencyUnit", currency.ScaleText);
+        var dimensionToPlugin = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+        dimensionToPlugin.Add("industry", new[] { "1", "\u6309\u884c\u4e1a" });
+        dimensionToPlugin.Add("product",  new[] { "2", "\u6309\u4ea7\u54c1" });
+        dimensionToPlugin.Add("region",   new[] { "3", "\u6309\u5730\u533a" });
+        string segmentDimension = options.SegmentDimension;
+        if (string.IsNullOrWhiteSpace(segmentDimension))
+        {
+            segmentDimension = "product";
+        }
+        string[] mapped;
+        if (!dimensionToPlugin.TryGetValue(segmentDimension, out mapped))
+        {
+            mapped = dimensionToPlugin["product"];
+        }
+        SetDocProperty("CompanyManagementType", mapped[0]);
+        SetDocProperty("CompanyManagementName", mapped[1]);
+        SetDocProperty("PeerStock", peerSelection.Gsdms);
+        SetDocProperty("UpdateDirectory", options.UpdateDirectory.ToString(CultureInfo.InvariantCulture));
+        SetDocProperty("UpdateSrcData", options.UpdateSrcData.ToString(CultureInfo.InvariantCulture));
+        tracer.Mark("set-properties");
+
+        var failures = new List<string>();
+        int lastYear = 0;
+        string lastReportDate = string.Empty;
+        Excel.XlCalculation oldCalculation = session.App.Calculation;
+        try
+        {
+            session.App.Calculation = Excel.XlCalculation.xlCalculationManual;
+            tracer.Mark("calculation-manual");
+
+            if (IsModernHongKongHistoryHandler(handler))
+            {
+                RunModernHongKongUpdate(session, handler, stock, options.UpdateDirectory, options.UpdateSrcData, out lastYear, out lastReportDate, failures, tracer);
+            }
+            else
+            {
+                RunStandardUpdate(session, handler, stock, options.UpdateDirectory, options.UpdateSrcData, out lastYear, out lastReportDate, failures, tracer);
+            }
+
+            SinitekExcel.WriterUtil.ModelUtil.LastYear = lastYear;
+
+            int migrateYears = 0;
+            string previousYear = GetDocProperty("year1");
+            if (!string.IsNullOrWhiteSpace(previousYear))
+            {
+                SetDocProperty("lastUpdateYear", previousYear);
+                migrateYears = lastYear - SafeInt(previousYear, lastYear);
+            }
+            SetDocProperty("year1", lastYear.ToString(CultureInfo.InvariantCulture));
+            tracer.Mark("year-state");
+
+            if (options.Migrate && migrateYears > 0)
+            {
+                if (!(bool)InvokeMethod(handler, "MigrateData", false, migrateYears))
+                {
+                    failures.Add("migrate");
+                }
+                tracer.Mark("migrate");
+            }
+
+            if (options.AddOutput)
+            {
+                string outputType = ResolveHandlerType("btnOutput");
+                object outputHandler = Activator.CreateInstance(ResolveType(outputType));
+                if (!(bool)InvokeMethod(outputHandler, "GetOutputSheet", true, ResolveMailSuffix(options.Username), stock.StockCode))
+                {
+                    failures.Add("output");
+                }
+                tracer.Mark("output-sheet");
+            }
+
+            session.App.CalculateFull();
+            tracer.Mark("calculate-full");
+        }
+        finally
+        {
+            session.App.Calculation = oldCalculation;
+        }
+
+        SaveIfRequested(session.Workbook, artifact, options.SaveOriginal);
+        tracer.Mark("save");
+
+        var lines = new List<string>();
+        lines.Add("Update=" + (failures.Count == 0));
+        lines.Add("Handler=" + handlerType);
+        lines.Add("Stock=" + stock.StockCode);
+        lines.Add("GSCode=" + stock.Gsdm);
+        lines.Add("LastReportDate=" + lastReportDate);
+        lines.Add("LastYear=" + lastYear.ToString(CultureInfo.InvariantCulture));
+        lines.Add("HistoryYear=" + options.HistoryYear.ToString(CultureInfo.InvariantCulture));
+        lines.Add("ForecastYear=" + options.ForecastYear.ToString(CultureInfo.InvariantCulture));
+        lines.Add("CurrencyUnit=" + currency.CurrencyUnitName);
+        lines.Add("CurrencyUnitScale=" + currency.ScaleText);
+        lines.Add("PeerStock=" + peerSelection.Gsdms);
+        lines.Add("PeerStockSource=" + peerSelection.Source);
+        lines.Add("PeerStockCount=" + peerSelection.Count.ToString(CultureInfo.InvariantCulture));
+        if (failures.Count > 0)
+        {
+            lines.Add("Failures=" + string.Join(",", failures));
+        }
+
+        return new UpdateExecutionResult(string.Join(Environment.NewLine, lines), artifact);
     }
 
     public static string PredictionSettingsDirect(
@@ -310,12 +493,15 @@ public static class SinitekCliBridge
         string predictionRows,
         string predictionIndicators,
         string predictionMethod,
-        string predictionSettings)
+        string predictionSettings,
+        bool perfTrace)
     {
-        using (var session = new ExcelSession(workbookPath, visible, false))
+        var tracer = new PerfTracer(perfTrace, "predict");
+        using (var session = new ExcelSession(workbookPath, visible, false, tracer))
         {
             string handlerType = ResolveHandlerType("btnSet");
             Type formType = ResolvePredictionFormType(handlerType);
+            tracer.Mark("form-type");
             var applied = new List<string>();
             var appliedIndicators = new List<string>();
 
@@ -323,11 +509,13 @@ public static class SinitekCliBridge
             try
             {
                 InvokePredictionFormLoad(form);
+                tracer.Mark("form-load");
 
                 var checkBoxes = new List<System.Windows.Forms.CheckBox>();
                 var comboBoxes = new List<System.Windows.Forms.ComboBox>();
                 CollectControls((System.Windows.Forms.Control)form, checkBoxes);
                 CollectControls((System.Windows.Forms.Control)form, comboBoxes);
+                tracer.Mark("collect-controls");
 
                 var targets = BuildPredictionTargets(checkBoxes, comboBoxes);
                 var selected = ResolvePredictionSelections(
@@ -337,6 +525,7 @@ public static class SinitekCliBridge
                     predictionIndicators,
                     predictionMethod,
                     predictionSettings);
+                tracer.Mark("resolve-selections");
 
                 foreach (KeyValuePair<PredictionTarget, int> item in selected)
                 {
@@ -351,6 +540,7 @@ public static class SinitekCliBridge
                         appliedIndicators.Add(target.IndicatorName + "=" + PredictionMethodName(methodIndex));
                     }
                 }
+                tracer.Mark("apply-settings");
             }
             finally
             {
@@ -362,7 +552,9 @@ public static class SinitekCliBridge
             }
 
             session.App.CalculateFull();
+            tracer.Mark("calculate-full");
             SaveIfRequested(session.Workbook, outWorkbook, saveOriginal);
+            tracer.Mark("save");
 
             var lines = new List<string>();
             lines.Add("PredictionSettings=true");
@@ -374,6 +566,7 @@ public static class SinitekCliBridge
             {
                 lines.Add("AppliedIndicators=" + string.Join(";", appliedIndicators.ToArray()));
             }
+            tracer.Mark("complete");
             return string.Join(Environment.NewLine, lines);
         }
     }
@@ -386,10 +579,12 @@ public static class SinitekCliBridge
         bool updateSrcData,
         out int lastYear,
         out string lastReportDate,
-        List<string> failures)
+        List<string> failures,
+        PerfTracer tracer)
     {
         var reportYear = DateTime.Now.Year - 1;
         int lastYearFlag = (int)InvokeMethod(handler, "IsLastYear", false, stock.StockCode, reportYear);
+        tracer.Mark("standard-is-last-year");
         if (lastYearFlag == -1)
         {
             throw new InvalidOperationException("Failed to validate latest annual report period.");
@@ -397,6 +592,7 @@ public static class SinitekCliBridge
 
         lastYear = lastYearFlag > 0 ? reportYear : reportYear - 1;
         lastReportDate = (string)InvokeMethod(handler, "GetLastReportDate", false, stock.StockCode);
+        tracer.Mark("standard-last-report-date");
         if (string.IsNullOrWhiteSpace(lastReportDate))
         {
             throw new InvalidOperationException("Failed to get latest report date for " + stock.StockCode + ".");
@@ -408,6 +604,7 @@ public static class SinitekCliBridge
             {
                 failures.Add("directory");
             }
+            tracer.Mark("standard-update-directory");
         }
 
         if (updateSrcData)
@@ -417,21 +614,25 @@ public static class SinitekCliBridge
             {
                 failures.Add("src-data");
             }
+            tracer.Mark("standard-update-src-data");
             if (!(bool)InvokeMethod(handler, "UpdateFinancialNotes", false))
             {
                 failures.Add("financial-notes");
             }
+            tracer.Mark("standard-update-financial-notes");
             if (SheetExists(session.Workbook, "Company operating data") || SheetExists(session.Workbook, "公司经营数据"))
             {
                 if (!(bool)InvokeMethod(handler, "UpdateCompanyManagement", false))
                 {
                     failures.Add("company-management");
                 }
+                tracer.Mark("standard-update-company-management");
             }
             if (!(bool)InvokeMethod(handler, "UpdatePeerAnalysis", false, lastReportDate))
             {
                 failures.Add("peer-analysis");
             }
+            tracer.Mark("standard-update-peer-analysis");
         }
     }
 
@@ -443,10 +644,12 @@ public static class SinitekCliBridge
         bool updateSrcData,
         out int lastYear,
         out string lastReportDate,
-        List<string> failures)
+        List<string> failures,
+        PerfTracer tracer)
     {
         object periods = InvokeMethod(handler, "GetReportPeriodList", false, stock.StockCode);
         ArrayList reportPeriodList = periods as ArrayList;
+        tracer.Mark("hk-report-period-list");
         if (reportPeriodList == null || reportPeriodList.Count == 0)
         {
             throw new InvalidOperationException("Failed to get Hong Kong report period list for " + stock.StockCode + ".");
@@ -454,6 +657,7 @@ public static class SinitekCliBridge
 
         Hashtable latestPeriod = InvokeMethod(handler, "GetlastReportPeriod", false, stock.StockCode) as Hashtable;
         Hashtable lastYearPeriod = InvokeMethod(handler, "GetLastYearReportPeriod", false, stock.StockCode) as Hashtable;
+        tracer.Mark("hk-last-periods");
         lastReportDate = GetHashtableText(latestPeriod, "REPORTDATE", "reportDate", "ReportDate");
         string lastYearReportDate = GetHashtableText(lastYearPeriod, "REPORTDATE", "reportDate", "ReportDate");
         string lastYearText = GetHashtableText(lastYearPeriod, "YEAR", "year", "Year");
@@ -474,6 +678,7 @@ public static class SinitekCliBridge
             {
                 failures.Add("directory");
             }
+            tracer.Mark("hk-update-directory");
         }
 
         if (updateSrcData)
@@ -483,6 +688,7 @@ public static class SinitekCliBridge
             {
                 failures.Add("src-data");
             }
+            tracer.Mark("hk-update-src-data");
         }
     }
 
@@ -1206,6 +1412,95 @@ public static class SinitekCliBridge
         return match;
     }
 
+    private static List<string> ParseStockList(string stocks)
+    {
+        var result = new List<string>();
+        if (string.IsNullOrWhiteSpace(stocks))
+        {
+            return result;
+        }
+
+        foreach (string item in stocks.Split(new[] { ',', ';', '\r', '\n', '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            string stock = item.Trim();
+            if (!string.IsNullOrWhiteSpace(stock))
+            {
+                result.Add(stock);
+            }
+        }
+
+        return result;
+    }
+
+    private static string NormalizeStockInputForSearch(string stockCode)
+    {
+        string text = stockCode == null ? string.Empty : stockCode.Trim();
+        if (text.EndsWith(".HK", StringComparison.OrdinalIgnoreCase))
+        {
+            return text.Substring(0, text.Length - 3);
+        }
+
+        return text;
+    }
+
+    private static string BuildOutputWorkbookPath(string outputDir, string workbookPath, string actionName, string stockCode)
+    {
+        string directory = Path.GetFullPath(outputDir);
+        Directory.CreateDirectory(directory);
+        string workbookName = Path.GetFileNameWithoutExtension(workbookPath);
+        if (string.IsNullOrWhiteSpace(workbookName))
+        {
+            workbookName = "workbook";
+        }
+
+        string normalizedStock = NormalizeStockCodeForFileName(stockCode);
+        string stockPart = string.IsNullOrWhiteSpace(normalizedStock) ? string.Empty : "-" + normalizedStock;
+        string timestamp = DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
+        string candidate = Path.Combine(directory, workbookName + "-" + actionName + stockPart + "-" + timestamp + ".xlsx");
+        return EnsureUniquePath(candidate);
+    }
+
+    private static string NormalizeStockCodeForFileName(string stockCode)
+    {
+        if (string.IsNullOrWhiteSpace(stockCode))
+        {
+            return string.Empty;
+        }
+
+        StringBuilder builder = new StringBuilder();
+        foreach (char ch in stockCode.Trim())
+        {
+            if (char.IsDigit(ch))
+            {
+                builder.Append(ch);
+            }
+        }
+
+        return builder.ToString();
+    }
+
+    private static string EnsureUniquePath(string path)
+    {
+        if (!File.Exists(path))
+        {
+            return path;
+        }
+
+        string directory = Path.GetDirectoryName(path);
+        string name = Path.GetFileNameWithoutExtension(path);
+        string extension = Path.GetExtension(path);
+        for (int i = 2; i < 10000; i++)
+        {
+            string candidate = Path.Combine(directory, name + "-" + i.ToString("00", CultureInfo.InvariantCulture) + extension);
+            if (!File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        throw new IOException("Cannot create a unique output filename for " + path);
+    }
+
     private static PeerStockSelection ResolvePeerStockSelection(
         Sinitek.WriterModel.StockData stock,
         string explicitPeerStock,
@@ -1690,7 +1985,7 @@ public static class SinitekCliBridge
         LoadIpConfig();
         if (!string.IsNullOrWhiteSpace(username) || !string.IsNullOrEmpty(password))
         {
-            Login(username, password);
+            Login(username, password, false);
         }
     }
 
@@ -2383,6 +2678,40 @@ public static class SinitekCliBridge
         }
     }
 
+    private sealed class UpdateExecutionResult
+    {
+        public UpdateExecutionResult(string outputText, string artifact)
+        {
+            OutputText = outputText ?? string.Empty;
+            Artifact = artifact ?? string.Empty;
+        }
+
+        public string OutputText { get; private set; }
+        public string Artifact { get; private set; }
+    }
+
+    private sealed class UpdateOptions
+    {
+        public string WorkbookPath { get; set; }
+        public string OutWorkbook { get; set; }
+        public bool SaveOriginal { get; set; }
+        public string OutputDir { get; set; }
+        public string OutputActionName { get; set; }
+        public string StockCode { get; set; }
+        public string Gsdm { get; set; }
+        public string StockName { get; set; }
+        public int HistoryYear { get; set; }
+        public int ForecastYear { get; set; }
+        public string CurrencyUnit { get; set; }
+        public string SegmentDimension { get; set; }
+        public string PeerStock { get; set; }
+        public bool UpdateDirectory { get; set; }
+        public bool UpdateSrcData { get; set; }
+        public bool Migrate { get; set; }
+        public bool AddOutput { get; set; }
+        public string Username { get; set; }
+    }
+
     private sealed class CurrencyUnitSpec
     {
         public CurrencyUnitSpec(string scaleText, double scale, string currencyUnitName, string shareUnitName)
@@ -2483,16 +2812,81 @@ public static class SinitekCliBridge
         public Excel.Application App { get; private set; }
         public Excel.Workbook Workbook { get; private set; }
         private bool disposed;
+        private ExcelApplicationSession applicationSession;
+        private bool ownsApplicationSession;
+
+        public ExcelSession(string workbookPath, bool visible, bool readOnly, PerfTracer tracer)
+        {
+            applicationSession = new ExcelApplicationSession(visible, tracer);
+            ownsApplicationSession = true;
+            App = applicationSession.App;
+            OpenWorkbook(workbookPath, readOnly, tracer);
+        }
+
+        public ExcelSession(ExcelApplicationSession applicationSession, string workbookPath, bool readOnly, PerfTracer tracer)
+        {
+            if (applicationSession == null || applicationSession.App == null)
+            {
+                throw new ArgumentNullException("applicationSession");
+            }
+
+            this.applicationSession = applicationSession;
+            ownsApplicationSession = false;
+            App = applicationSession.App;
+            OpenWorkbook(workbookPath, readOnly, tracer);
+        }
+
+        private void OpenWorkbook(string workbookPath, bool readOnly, PerfTracer tracer)
+        {
+            Workbook = App.Workbooks.Open(Path.GetFullPath(workbookPath), 0, readOnly);
+            ((Excel._Workbook)Workbook).Activate();
+            InstallDocumentPropertyPatch();
+            InitializeModelContextFromWorkbook();
+            tracer.Mark("workbook-open");
+        }
+
+        public void Dispose()
+        {
+            if (disposed)
+            {
+                return;
+            }
+
+            disposed = true;
+            try
+            {
+                if (Workbook != null)
+                {
+                    Workbook.Close(false);
+                    Marshal.ReleaseComObject(Workbook);
+                }
+            }
+            finally
+            {
+                if (ownsApplicationSession && applicationSession != null)
+                {
+                    applicationSession.Dispose();
+                }
+            }
+        }
+    }
+
+    private sealed class ExcelApplicationSession : IDisposable
+    {
+        public Excel.Application App { get; private set; }
+        private bool disposed;
         private int processId;
         private HashSet<int> existingExcelProcessIds;
 
-        public ExcelSession(string workbookPath, bool visible, bool readOnly)
+        public ExcelApplicationSession(bool visible, PerfTracer tracer)
         {
             Directory.SetCurrentDirectory(AddinDir);
             LoadIpConfig();
+            tracer.Mark("ip-config");
 
             existingExcelProcessIds = GetExcelProcessIds();
             App = (Excel.Application)Activator.CreateInstance(Type.GetTypeFromProgID("Excel.Application"));
+            tracer.Mark("excel-created");
             try
             {
                 GetWindowThreadProcessId(new IntPtr(App.Hwnd), out processId);
@@ -2522,11 +2916,7 @@ public static class SinitekCliBridge
             Array custom = Array.CreateInstance(typeof(object), 0);
             connect.OnConnection(App, Extensibility.ext_ConnectMode.ext_cm_Startup, null, ref custom);
             SinitekExcel.WriterUtil.WriteUtil.Application = App;
-
-            Workbook = App.Workbooks.Open(Path.GetFullPath(workbookPath), 0, readOnly);
-            ((Excel._Workbook)Workbook).Activate();
-            InstallDocumentPropertyPatch();
-            InitializeModelContextFromWorkbook();
+            tracer.Mark("addin-connected");
         }
 
         public void Dispose()
@@ -2539,19 +2929,14 @@ public static class SinitekCliBridge
             disposed = true;
             try
             {
-                if (Workbook != null)
-                {
-                    Workbook.Close(false);
-                    Marshal.ReleaseComObject(Workbook);
-                }
-            }
-            finally
-            {
                 if (App != null)
                 {
                     App.Quit();
                     Marshal.ReleaseComObject(App);
                 }
+            }
+            finally
+            {
                 GC.Collect();
                 GC.WaitForPendingFinalizers();
                 GC.Collect();

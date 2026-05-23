@@ -293,7 +293,7 @@ defaults:
 | `login` | 校验携宁云账号密码 | 否 | `-Username`、`-Password` |
 | `output` | 生成 output sheet 并保存 | 是 | `-Stock`、`-CurrencyUnit`、`-OutWorkbook` |
 | `update` | 更新模型历史数据和相关表 | 是 | `-Stock`、`-HistoryYear`、`-ForecastYear`、`-PeerStock` |
-| `produce` | 一键更新并生成 output sheet | 是 | `-Stock`、`-CurrencyUnit`、`-TimeoutSeconds` |
+| `produce` | 一键更新并生成 output sheet | 是 | `-Stock`/`-Stocks`、`-CurrencyUnit`、`-TimeoutSeconds` |
 | `predict` | 执行"预测数据设置" | 是 | `-PredictionMethod`、`-PredictionIndicators`、`-PredictionSettings` |
 
 ### 通用参数
@@ -308,6 +308,7 @@ defaults:
 | `-Username` | 携宁云账号（邮箱），不传时从环境变量或 YAML 读取 | login, output, update, produce |
 | `-Password` | 携宁云密码，不传时从环境变量或 YAML 读取 | login, output, update, produce |
 | `-TimeoutSeconds` | 总超时秒数，默认 300，传 `0` 关闭 | 全部 |
+| `-PerfTrace` | 输出阶段耗时到 stderr，用于定位 Excel、插件、云端接口和保存耗时 | 全部 |
 | `-OutWorkbook` | 保存到指定路径（三选一） | output, update, produce, predict |
 | `-OutputDir` | 自动生成输出文件名并保存到此目录（三选一） | output, update, produce, predict |
 | `-Save` | 写回原 xlsx 文件（三选一） | output, update, produce, predict |
@@ -432,6 +433,24 @@ defaults:
 
 `produce` 会强制包含 output sheet，并会按 `currency_unit` / `-CurrencyUnit` 同步报表单位；输出路径遵循 `-OutWorkbook`、`output_dir` 或 `-Save` 的保存规则。命令成功时会回显 `Artifact=<xlsx路径>`，便于后续脚本直接读取产物位置。
 
+批量输出多只股票时使用 `-Stocks`。批量模式会复用同一个 Excel 进程和插件连接，但每只股票仍重新打开模板 workbook，避免上一只股票的 workbook 状态污染下一只。批量模式只支持 `-OutputDir` / `output_dir` 自动生成多个产物，不支持 `-OutWorkbook` 或 `-Save`：
+
+```powershell
+.\sinitek.ps1 -Action produce -Stocks "600519,000858,688343" -OutputDir .\output
+```
+
+港股批量请单独使用港股列表；未显式传 `-Workbook` 时，CLI 会按 `.HK` 后缀自动切到港股模板。不要把 A 股和港股混在同一批：
+
+```powershell
+.\sinitek.ps1 -Action produce -Stocks "00700.HK,09988.HK" -OutputDir .\output
+```
+
+需要定位耗时时加 `-PerfTrace`，PERF 行输出到 stderr，不影响 stdout 中的 `Artifact=`：
+
+```powershell
+.\sinitek.ps1 -Action produce -Stocks "600519,000858" -OutputDir .\output -PerfTrace
+```
+
 CLI 默认有 300 秒总超时，覆盖 PowerShell、Excel COM 和插件调用链。需要放宽时可以传 `-TimeoutSeconds`：
 
 ```powershell
@@ -449,6 +468,7 @@ CLI 默认有 300 秒总超时，覆盖 PowerShell、Excel COM 和插件调用�
 | 专属参数 | 说明 |
 | --- | --- |
 | `-Stock` | 目标股票代码 |
+| `-Stocks` | 批量目标股票代码，逗号/分号/空白/换行分隔；仅支持 `produce`，且必须使用 `-OutputDir` 或 YAML `output_dir` |
 | `-Gsdm` | 公司代码，不传时通过股票搜索自动解析 |
 | `-StockName` | 股票名称，不传时使用搜索结果中的名称 |
 | `-HistoryYear` | 历史年数，写入"目录"页 `D3` |
@@ -564,6 +584,8 @@ CLI 默认有 300 秒总超时，覆盖 PowerShell、Excel COM 和插件调用�
 - 传 `-OutWorkbook <path>` 保存到指定文件。
 - 配置或传入 `-OutputDir <dir>` 自动生成输出文件，命名格式为 `<原始Workbook文件名>-<Action>-<Stock>-<yyyyMMdd-HHmmss>.xlsx`，其中 `Action` 统一首字母大写，`Stock` 为纯数字股票代码；`predict` 未提供股票代码时会省略 `Stock` 段。
 - 传 `-Save` 写回原文件。
+
+批量 `produce -Stocks` 只支持第二种保存规则，每只股票生成一个文件。
 
 如果都没有提供，CLI 会拒绝执行，避免无意修改原模板。
 
